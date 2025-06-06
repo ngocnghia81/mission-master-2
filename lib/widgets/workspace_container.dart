@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_progress_status/flutter_progress_status.dart';
-import 'package:get/get.dart';
+
 import 'package:mission_master/constants/colors.dart';
 import 'package:mission_master/constants/fonts.dart';
 import 'package:mission_master/data/databse/database_functions.dart';
 import 'package:mission_master/injection/database.dart';
 import 'package:mission_master/widgets/members_container.dart';
 import 'package:mission_master/widgets/text.dart';
+// import 'package:mission_master/widgets/progress_status.dart';
 
 class WorkSpaceContainer extends StatelessWidget {
   final Color color1;
@@ -40,7 +40,7 @@ class WorkSpaceContainer extends StatelessWidget {
       decoration: BoxDecoration(
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.5),
+            color: Colors.grey.withValues(alpha: 0.5),
             spreadRadius: 0.5,
             blurRadius: 1,
           ),
@@ -77,19 +77,26 @@ class WorkSpaceContainer extends StatelessWidget {
             margin: EdgeInsets.only(
               top: size.height * 0.01,
               left: size.width * 0.04,
+              right: size.width * 0.04,
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.calendar_month_outlined,
                   color: Colors.white,
+                  size: size.width * 0.04,
                 ),
-                text(
-                  title: projectCreationDate,
-                  fontSize: size.width * 0.03,
-                  fontWeight: AppFonts.bold,
-                  color: AppColors.white,
-                  align: TextAlign.start,
+                SizedBox(width: size.width * 0.01),
+                Flexible(
+                  child: Text(
+                    projectCreationDate,
+                    style: TextStyle(
+                      fontSize: size.width * 0.03,
+                      fontWeight: AppFonts.bold,
+                      color: AppColors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -129,18 +136,13 @@ class WorkSpaceContainer extends StatelessWidget {
                                 child: CircularProgressIndicator(),
                               );
                             } else {
-                              return ProgressStatus(
-                                backgroundColor: Colors.grey,
-                                strokeWidth: 3,
-                                fillValue: snapshot.data!.isNaN
-                                    ? 0
-                                    : snapshot.data! * 100,
-                                isStrokeCapRounded: true,
-                                centerTextStyle: TextStyle(
+                              return Text(
+                                '${(snapshot.data! * 100).toInt()}%',
+                                style: TextStyle(
                                   color: AppColors.white,
                                   fontSize: size.width * 0.024,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                fillColor: Colors.white,
                               );
                             }
                           },

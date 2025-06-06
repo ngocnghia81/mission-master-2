@@ -12,6 +12,8 @@ import 'package:mission_master/widgets/task_card.dart';
 import 'package:mission_master/widgets/text.dart';
 import 'package:mission_master/screens/statistics/project_statistics_screen.dart';
 import 'package:mission_master/screens/task/task_detail_screen.dart';
+import 'package:mission_master/screens/workspace/gantt_chart_screen.dart';
+import 'package:mission_master/screens/workspace/kanban_board_screen.dart';
 import 'package:mission_master/screens/workspace/workspace_board_screen.dart';
 import 'package:mission_master/screens/workspace/workspace_chat_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -120,55 +122,91 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
             children: [
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildFeatureButton(
-                      icon: Icons.analytics_outlined,
-                      label: 'Thống kê',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ProjectStatisticsScreen(
-                              projectId: projectController.projectId.string,
-                              projectName: projectController.projectName.string,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildFeatureButton(
+                        icon: Icons.analytics_outlined,
+                        label: 'Thống kê',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ProjectStatisticsScreen(
+                                projectId: projectController.projectId.string,
+                                projectName: projectController.projectName.string,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildFeatureButton(
-                      icon: Icons.chat_outlined,
-                      label: 'Chat',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => WorkspaceChatScreen(
-                              projectId: projectController.projectId.string,
-                              projectName: projectController.projectName.string,
+                          );
+                        },
+                      ),
+                      SizedBox(width: 8),
+                      _buildFeatureButton(
+                        icon: Icons.chat_outlined,
+                        label: 'Chat',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => WorkspaceChatScreen(
+                                projectId: projectController.projectId.string,
+                                projectName: projectController.projectName.string,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildFeatureButton(
-                      icon: Icons.announcement_outlined,
-                      label: 'Thông báo',
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => WorkspaceBoardScreen(
-                              projectId: projectController.projectId.string,
-                              projectName: projectController.projectName.string,
+                          );
+                        },
+                      ),
+                      SizedBox(width: 8),
+                      _buildFeatureButton(
+                        icon: Icons.announcement_outlined,
+                        label: 'Thông báo',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => WorkspaceBoardScreen(
+                                projectId: projectController.projectId.string,
+                                projectName: projectController.projectName.string,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                  ],
+                          );
+                        },
+                      ),
+                      SizedBox(width: 8),
+                      _buildFeatureButton(
+                        icon: Icons.view_kanban_outlined,
+                        label: 'Kanban',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => KanbanBoardScreen(
+                                projectId: projectController.projectId.string,
+                                projectName: projectController.projectName.string,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      SizedBox(width: 8),
+                      _buildFeatureButton(
+                        icon: Icons.stacked_line_chart,
+                        label: 'Gantt',
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => GanttChartScreen(
+                                projectId: projectController.projectId.string,
+                                projectName: projectController.projectName.string,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
               text(
@@ -541,30 +579,36 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
                                                   Row(
                                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                     children: [
-                                                      text(
-                                                        title: snap['status'] ?? ViLabels.taskStatusLabels[0],
-                                                        fontSize: width * 0.04,
-                                                        fontWeight: AppFonts.medium,
-                                                        color: _getStatusColor(snap['status'] ?? ViLabels.taskStatusLabels[0]),
-                                                        align: TextAlign.start,
-                                                      ),
-                                                      ElevatedButton(
-                                                        style: ElevatedButton.styleFrom(
-                                                          backgroundColor: AppColors.workspaceGradientColor1[0],
-                                                          padding: EdgeInsets.symmetric(
-                                                            horizontal: width * 0.02,
-                                                            vertical: height * 0.01,
-                                                          ),
-                                                        ),
-                                                        onPressed: () {
-                                                          _showStatusUpdateDialog(context, snap);
-                                                        },
+                                                      Flexible(
+                                                        flex: 2,
                                                         child: text(
-                                                          title: ViLabels.updateStatus,
-                                                          fontSize: width * 0.03,
+                                                          title: snap['status'] ?? ViLabels.taskStatusLabels[0],
+                                                          fontSize: width * 0.04,
                                                           fontWeight: AppFonts.medium,
-                                                          color: AppColors.white,
-                                                          align: TextAlign.center,
+                                                          color: _getStatusColor(snap['status'] ?? ViLabels.taskStatusLabels[0]),
+                                                          align: TextAlign.start,
+                                                        ),
+                                                      ),
+                                                      Flexible(
+                                                        flex: 1,
+                                                        child: ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor: AppColors.workspaceGradientColor1[0],
+                                                            padding: EdgeInsets.symmetric(
+                                                              horizontal: width * 0.02,
+                                                              vertical: height * 0.01,
+                                                            ),
+                                                          ),
+                                                          onPressed: () {
+                                                            _showStatusUpdateDialog(context, snap);
+                                                          },
+                                                          child: text(
+                                                            title: ViLabels.updateStatus,
+                                                            fontSize: width * 0.03,
+                                                            fontWeight: AppFonts.medium,
+                                                            color: AppColors.white,
+                                                            align: TextAlign.center,
+                                                          ),
                                                         ),
                                                       ),
                                                     ],

@@ -142,28 +142,28 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
       if (widget.task.id == widget.task.projectId) {
         // Thử cập nhật trạng thái chỉ bằng tên task
         print("Phát hiện lỗi: Task ID và Project ID giống nhau, thử cập nhật bằng tên task");
-        bool success = await _database.updateTaskStatus(
-          taskName: widget.task.title,
-          changeStatusTo: newStatus,
+      bool success = await _database.updateTaskStatus(
+        taskName: widget.task.title,
+        changeStatusTo: newStatus,
+      );
+      
+      if (success) {
+        setState(() {
+          _currentStatus = newStatus;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Trạng thái đã được cập nhật thành công'),
+            backgroundColor: Colors.green,
+          ),
         );
         
-        if (success) {
-          setState(() {
-            _currentStatus = newStatus;
-          });
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Trạng thái đã được cập nhật thành công'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          
-          await Future.delayed(Duration(seconds: 1));
-          if (mounted) {
-            Navigator.of(context).pop();
-          }
-        } else {
+        await Future.delayed(Duration(seconds: 1));
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      } else {
           _showErrorMessage('Không thể cập nhật trạng thái. Đã phát hiện lỗi trong cấu trúc dữ liệu task.');
         }
         return;

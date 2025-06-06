@@ -52,7 +52,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   DateTime _focusedDay = DateTime.now();
   CalendarFormat _calendarFormat = CalendarFormat.week;
   String _selectedStatus = 'all';
-  
+
   @override
   void initState() {
     notification.requestPermission();
@@ -144,8 +144,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   );
                 } else if (currentIndex == 2) {
                   tasksBloc.add(tasks_bloc.FilterByDate(date: _selectedDay));
-                }
-                
+            }
+            
                 // Hiển thị thông báo đã làm mới
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -728,10 +728,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: ValueListenableBuilder<int>(
                 valueListenable: displayCount,
                 builder: (context, count, child) {
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
                     itemCount: count < tasks.length ? count + 1 : count, // +1 cho nút "Tải thêm"
-                    itemBuilder: (context, index) {
+      itemBuilder: (context, index) {
                       // Nếu đến cuối danh sách và còn task chưa hiển thị, hiện nút "Tải thêm"
                       if (index == count && count < tasks.length) {
                         return Padding(
@@ -750,10 +750,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                       }
                       
                       // Hiển thị task bình thường
-                      final task = tasks[index];
-                      return TaskCard(
-                        task: task,
-                        onTap: () => _showTaskDetails(task),
+        final task = tasks[index];
+        return TaskCard(
+          task: task,
+          onTap: () => _showTaskDetails(task),
                       );
                     },
                   );

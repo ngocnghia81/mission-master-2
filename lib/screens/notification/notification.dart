@@ -145,69 +145,55 @@ class _NotificationsState extends State<Notifications> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.primaryColor,
-        onPressed: () async {
-          // Gửi thông báo kiểm tra
-          await notificationServices.sendTestNotification();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Đã gửi thông báo kiểm tra'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        },
-        child: Icon(Icons.notification_add, color: Colors.white),
-        tooltip: 'Gửi thông báo kiểm tra',
-      ),
+
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : StreamBuilder(
-              stream: FirebaseFirestore.instance
-                  .collection('Notifications')
-                  .where('receiveTo', isEqualTo: Auth.auth.currentUser!.email)
-                  .orderBy('receiveDate', descending: true)
+        stream: FirebaseFirestore.instance
+            .collection('Notifications')
+            .where('receiveTo', isEqualTo: Auth.auth.currentUser!.email)
+            .orderBy('receiveDate', descending: true)
                   .limit(30)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(
-                    child: CircularProgressIndicator(),
-                  );
-                } else {
-                  return snapshot.data!.docs.isNotEmpty &&
-                          snapshot.connectionState == ConnectionState.active
-                      ? ListView.builder(
-                          padding: EdgeInsets.all(16),
-                          itemCount: snapshot.data!.docs.length,
-                          itemBuilder: (context, index) {
-                            DocumentSnapshot doc = snapshot.data!.docs[index];
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          } else {
+            return snapshot.data!.docs.isNotEmpty &&
+                    snapshot.connectionState == ConnectionState.active
+                ? ListView.builder(
+                    padding: EdgeInsets.all(16),
+                    itemCount: snapshot.data!.docs.length,
+                    itemBuilder: (context, index) {
+                      DocumentSnapshot doc = snapshot.data!.docs[index];
                             // Kiểm tra trạng thái đã đọc với null safety
                             bool isRead = doc.data() is Map<String, dynamic> 
                                 ? (doc.data() as Map<String, dynamic>)['isRead'] ?? false 
                                 : false;
                             
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                                 if (index == 0 || _formatDate(doc['receiveDate']) != _formatDate(snapshot.data!.docs[index - 1]['receiveDate']))
                                   Padding(
                                     padding: EdgeInsets.only(top: 8.0, bottom: 4.0),
                                     child: text(
                                       title: _formatDate(doc['receiveDate']),
-                                      fontSize: size.width * 0.04,
-                                      fontWeight: AppFonts.semiBold,
-                                      color: AppColors.grey,
-                                      align: TextAlign.start
+                            fontSize: size.width * 0.04,
+                            fontWeight: AppFonts.semiBold,
+                            color: AppColors.grey,
+                            align: TextAlign.start
                                     ),
-                                  ),
-                                Container(
-                                  margin: EdgeInsets.symmetric(
-                                    vertical: size.height * 0.01,
-                                  ),
-                                  decoration: BoxDecoration(
+                          ),
+                          Container(
+                            margin: EdgeInsets.symmetric(
+                              vertical: size.height * 0.01,
+                            ),
+                            decoration: BoxDecoration(
                                     color: isRead ? Colors.white : Colors.blue.shade50,
-                                    border: Border.all(
+                              border: Border.all(
                                         width: 1, 
                                         color: isRead ? Colors.grey : Colors.blue.shade300),
                                     borderRadius: BorderRadius.circular(10.0),
@@ -218,8 +204,8 @@ class _NotificationsState extends State<Notifications> {
                                             blurRadius: 4,
                                             offset: Offset(0, 2),
                                           )],
-                                  ),
-                                  child: ListTile(
+                            ),
+                            child: ListTile(
                                     leading: CircleAvatar(
                                       backgroundColor: isRead 
                                           ? Colors.grey.shade200 
@@ -229,20 +215,20 @@ class _NotificationsState extends State<Notifications> {
                                         color: isRead ? Colors.grey : Colors.white,
                                       ),
                                     ),
-                                    title: text(
-                                      title: doc['title'],
-                                      fontSize: size.width * 0.04,
+                              title: text(
+                                title: doc['title'],
+                                fontSize: size.width * 0.04,
                                       fontWeight: isRead ? AppFonts.normal : AppFonts.bold,
-                                      color: AppColors.black,
-                                      align: TextAlign.start
-                                    ),
-                                    subtitle: text(
-                                      title: doc['body'],
-                                      fontSize: size.width * 0.03,
+                                color: AppColors.black,
+                                align: TextAlign.start
+                              ),
+                              subtitle: text(
+                                title: doc['body'],
+                                fontSize: size.width * 0.03,
                                       fontWeight: AppFonts.normal,
-                                      color: AppColors.grey,
-                                      align: TextAlign.start
-                                    ),
+                                color: AppColors.grey,
+                                align: TextAlign.start
+                              ),
                                     trailing: !isRead 
                                         ? IconButton(
                                             icon: Icon(Icons.check_circle_outline),
@@ -256,13 +242,13 @@ class _NotificationsState extends State<Notifications> {
                                         _markAsRead(doc.id);
                                       }
                                     },
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        )
-                      : Center(
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                : Center(
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -273,17 +259,17 @@ class _NotificationsState extends State<Notifications> {
                               ),
                               SizedBox(height: 16),
                               text(
-                                title: ViLabels.noNotifications,
-                                align: TextAlign.center,
-                                color: AppColors.grey,
-                                fontSize: size.width * 0.045,
-                                fontWeight: AppFonts.semiBold,
+                      title: ViLabels.noNotifications,
+                      align: TextAlign.center,
+                      color: AppColors.grey,
+                      fontSize: size.width * 0.045,
+                      fontWeight: AppFonts.semiBold,
                               ),
                             ],
-                          ),
-                        );
-                }
-              }),
+                    ),
+                  );
+          }
+        }),
     );
   }
 }

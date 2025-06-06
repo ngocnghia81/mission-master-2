@@ -246,6 +246,81 @@ class _MainScreenState extends State<MainScreen> {
             },
           ),
           Divider(),
+          Padding(
+            padding: EdgeInsets.only(left: 16, top: 8, bottom: 8),
+            child: Text(
+              'Tính năng Doanh nghiệp',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.dashboard,
+            'Enterprise Dashboard',
+            () {
+              Navigator.pop(context);
+              // TODO: Select project from list
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Vui lòng chọn dự án trước'))
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.add_business,
+            'Tạo dự án Enterprise',
+            () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, AppRoutes.enterpriseProject);
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.business,
+            'Dự án Enterprise',
+            () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, AppRoutes.enterpriseProjectsList);
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.admin_panel_settings,
+            'Quản lý vai trò & quyền',
+            () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, AppRoutes.roleManagement);
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.inventory,
+            'Quản lý tài nguyên',
+            () {
+              Navigator.pop(context);
+              // TODO: Select project from list
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Vui lòng chọn dự án trước'))
+              );
+            },
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.analytics,
+            'Báo cáo & Phân tích',
+            () {
+              Navigator.pop(context);
+              // TODO: Select project from list
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Vui lòng chọn dự án trước'))
+              );
+            },
+          ),
+          Divider(),
           SwitchListTile(
             title: Text('Chế độ tối'),
             secondary: Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
@@ -287,20 +362,28 @@ class _MainScreenState extends State<MainScreen> {
               // Hiển thị dialog xác nhận
               bool confirm = await _showLogoutConfirmDialog(context);
               if (confirm) {
-                // Đăng xuất
-                await Auth.GoogleLogout();
-                
-                // Điều hướng về trang đăng nhập
-                if (context.mounted) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(
-                      builder: (context) => BlocProvider(
-                        create: (context) => LoginSignUpBloc(),
-                        child: const User(),
+                try {
+                  // Đăng xuất
+                  await Auth.GoogleLogout();
+                  
+                  // Điều hướng về trang đăng nhập với pushNamedAndRemoveUntil
+                  // để tránh xung đột Provider
+                  if (context.mounted) {
+                    Navigator.of(context).pushNamedAndRemoveUntil(
+                      AppRoutes.login,
+                      (route) => false, // Xóa tất cả các route cũ
+                    );
+                  }
+                } catch (e) {
+                  // Xử lý lỗi nếu có
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Lỗi khi đăng xuất: ${e.toString()}'),
+                        backgroundColor: Colors.red,
                       ),
-                    ),
-                    (route) => false, // Xóa tất cả các route cũ
-                  );
+                    );
+                  }
                 }
               }
             },

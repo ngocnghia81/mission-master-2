@@ -25,6 +25,7 @@ import 'package:mission_master/routes/routes.dart';
 import 'package:mission_master/routes/routes_generator.dart';
 import 'package:mission_master/screens/login_screen.dart';
 import 'package:mission_master/screens/main_screen.dart';
+import 'package:mission_master/screens/onboarding/onboarding_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mission_master/providers/statistics_provider.dart';
@@ -54,6 +55,9 @@ void main() async {
   // Khởi tạo SharedPreferences
   final sharedPreferences = await SharedPreferences.getInstance();
   
+  // Kiểm tra xem người dùng đã xem onboarding chưa
+  final hasSeenOnboarding = sharedPreferences.getBool('has_seen_onboarding') ?? false;
+  
   // Thiết lập các phụ thuộc sau khi Firebase đã được khởi tạo
   setup();
   
@@ -64,7 +68,10 @@ void main() async {
         ChangeNotifierProvider(create: (_) => StatisticsProvider()),
         ChangeNotifierProvider(create: (_) => ThemePreference()),
       ],
-      child: MyApp(sharedPreferences: sharedPreferences),
+      child: MyApp(
+        sharedPreferences: sharedPreferences,
+        hasSeenOnboarding: hasSeenOnboarding,
+      ),
     ),
   );
 }
@@ -98,8 +105,13 @@ Future<void> firebaseBackgroundMessage(RemoteMessage message) async {
 
 class MyApp extends StatefulWidget {
   final SharedPreferences sharedPreferences;
+  final bool hasSeenOnboarding;
   
-  const MyApp({super.key, required this.sharedPreferences});
+  const MyApp({
+    super.key, 
+    required this.sharedPreferences,
+    required this.hasSeenOnboarding,
+  });
 
   @override
   State<MyApp> createState() => _MyAppState();
@@ -140,52 +152,55 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemePreference>(context);
     
-    // Tạo TaskRepository để sử dụng chung
-    final taskRepository = TaskRepository(
-      taskDataProvider: TaskDataProvider(widget.sharedPreferences)
-    );
-    
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       themeMode: themeProvider.themeMode,
       title: 'Mission Master',
       darkTheme: AppTheme.darkTheme,
       theme: AppTheme.lightTheme,
-      initialRoute: AppRoutes.login,
+      initialRoute: widget.hasSeenOnboarding ? 
+          (Auth.auth.currentUser == null ? AppRoutes.login : AppRoutes.main) : 
+          AppRoutes.onboarding,
       onGenerateRoute: RouteGenerator.generateRoute,
-      home: Auth.auth.currentUser == null 
-          ? BlocProvider(
-              create: (context) => LoginSignUpBloc(),
-              child: const LoginScreen(),
-            ) 
-          : MultiBlocProvider(
-              providers: [
-                BlocProvider<NavBarBloc>(
-                  create: (context) => NavBarBloc(),
-                ),
-                BlocProvider<TasksBloc>(
-                  create: (context) => TasksBloc(taskRepository),
-                ),
-                BlocProvider<MemberBloc>(
-                  create: (context) => MemberBloc(),
-                ),
-                BlocProvider<ProjectBloc>(
-                  create: (context) => ProjectBloc(),
-                ),
-              ],
-              child: const MainScreen(),
+      home: _buildHomeScreen(),
+    );
+  }
+  
+  Widget _buildHomeScreen() {
+    // Nếu chưa xem onboarding, hiển thị onboarding screen
+    if (!widget.hasSeenOnboarding) {
+      return const OnboardingScreen();
+    }
+    
+    // Nếu chưa đăng nhập, hiển thị màn hình đăng nhập
+    if (Auth.auth.currentUser == null) {
+      return BlocProvider(
+        create: (context) => LoginSignUpBloc(),
+        child: const LoginScreen(),
+      );
+    }
+    
+    // Nếu đã đăng nhập, hiển thị màn hình chính
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<NavBarBloc>(
+          create: (context) => NavBarBloc(),
+        ),
+        BlocProvider<TasksBloc>(
+          create: (context) => TasksBloc(
+            TaskRepository(
+              taskDataProvider: TaskDataProvider(widget.sharedPreferences),
             ),
-      // Thêm BlocProvider cho toàn bộ ứng dụng để đảm bảo TasksBloc có sẵn ở mọi nơi
-      builder: (context, child) {
-        return MultiBlocProvider(
-          providers: [
-            BlocProvider<TasksBloc>(
-              create: (context) => TasksBloc(taskRepository),
-            ),
-          ],
-          child: child!,
-        );
-      },
+          ),
+        ),
+        BlocProvider<MemberBloc>(
+          create: (context) => MemberBloc(),
+        ),
+        BlocProvider<ProjectBloc>(
+          create: (context) => ProjectBloc(),
+        ),
+      ],
+      child: const MainScreen(),
     );
   }
 }

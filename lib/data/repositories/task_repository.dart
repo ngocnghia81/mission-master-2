@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'package:mission_master/data/models/task_model.dart';
 import 'package:mission_master/data/providers/task_data_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -9,6 +10,11 @@ class TaskRepository {
   final TaskDataProvider taskDataProvider;
   final _uuid = const Uuid();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  bool _isSyncing = false;
+  
+  // Stream controller để thông báo khi đồng bộ hoàn tất
+  final StreamController<bool> _syncController = StreamController<bool>.broadcast();
+  Stream<bool> get syncStream => _syncController.stream;
 
   TaskRepository({required this.taskDataProvider});
 
@@ -18,25 +24,39 @@ class TaskRepository {
       final localTasks = await taskDataProvider.getTasks();
       print('Lấy ${localTasks.length} task từ bộ nhớ cục bộ');
       
-      // Nếu có dữ liệu trong bộ nhớ cục bộ, trả về luôn
-      if (localTasks.isNotEmpty) {
-        print('Trả về ${localTasks.length} task từ bộ nhớ cục bộ');
-        return localTasks;
+      // Kiểm tra xem có cần đồng bộ không
+      if (taskDataProvider.needsSync()) {
+        // Đồng bộ trong nền nếu có dữ liệu cục bộ
+        if (localTasks.isNotEmpty) {
+          _startBackgroundSync();
+          return localTasks; // Trả về dữ liệu cục bộ ngay lập tức
+        } else {
+          // Nếu không có dữ liệu cục bộ, đồng bộ ngay
+          await syncTasksFromFirebase();
+          return await taskDataProvider.getTasks();
+        }
       }
       
-      // Nếu không có dữ liệu trong bộ nhớ cục bộ, đồng bộ từ Firebase
-      print('Không có dữ liệu trong bộ nhớ cục bộ, đồng bộ từ Firebase');
-      await syncTasksFromFirebase();
-      
-      // Lấy lại dữ liệu từ SharedPreferences sau khi đồng bộ
-      final syncedTasks = await taskDataProvider.getTasks();
-      print('Sau khi đồng bộ, có ${syncedTasks.length} task');
-      
-      return syncedTasks;
+      return localTasks;
     } catch (e) {
       print('Error fetching tasks: $e');
       // Nếu có lỗi, trả về dữ liệu local
-      return await taskDataProvider.getTasks();
+    return await taskDataProvider.getTasks();
+    }
+  }
+
+  // Khởi động đồng bộ trong nền
+  void _startBackgroundSync() {
+    if (!_isSyncing) {
+      _isSyncing = true;
+      Future.microtask(() async {
+        try {
+          await syncTasksFromFirebase();
+        } finally {
+          _isSyncing = false;
+          _syncController.add(true); // Thông báo đồng bộ hoàn tất
+        }
+      });
     }
   }
 
@@ -60,6 +80,8 @@ class TaskRepository {
       status: 'none',
       projectName: projectName,
       projectId: _uuid.v4(),
+      createdAt: DateTime.now(),
+      lastModified: DateTime.now(),
     );
     
     tasks.add(newTask);
@@ -74,7 +96,10 @@ class TaskRepository {
     final index = tasks.indexWhere((task) => task.id == taskId);
     
     if (index != -1) {
-      tasks[index] = tasks[index].copyWith(status: status);
+      tasks[index] = tasks[index].copyWith(
+        status: status,
+        lastModified: DateTime.now(),
+      );
       await taskDataProvider.saveTasks(tasks);
     }
   }
@@ -136,6 +161,20 @@ class TaskRepository {
       }
     }
     
+    // Lấy timestamp từ Firestore nếu có
+    DateTime? createdAt;
+    DateTime? lastModified;
+    
+    if (data['timestamp'] != null && data['timestamp'] is Timestamp) {
+      createdAt = (data['timestamp'] as Timestamp).toDate();
+    }
+    
+    if (data['lastModified'] != null && data['lastModified'] is Timestamp) {
+      lastModified = (data['lastModified'] as Timestamp).toDate();
+    } else if (createdAt != null) {
+      lastModified = createdAt; // Nếu không có lastModified, sử dụng thời gian tạo
+    }
+    
     return Task(
       id: id,
       title: data['taskName'] ?? '',
@@ -149,6 +188,8 @@ class TaskRepository {
       priority: data['priority'] ?? 'normal',
       isRecurring: data['isRecurring'] ?? false,
       recurringInterval: data['recurringInterval'] ?? '',
+      createdAt: createdAt,
+      lastModified: lastModified,
     );
   }
 
@@ -163,6 +204,10 @@ class TaskRepository {
       
       print('Bắt đầu đồng bộ dữ liệu từ Firebase cho người dùng: $currentUserEmail');
       
+      // Lấy thời gian đồng bộ cuối cùng để đồng bộ gia tăng
+      final DateTime? lastSync = taskDataProvider.getLastSyncTime();
+      print('Thời gian đồng bộ cuối cùng: ${lastSync?.toIso8601String() ?? "Chưa từng đồng bộ"}');
+      
       // Lấy tất cả các project mà người dùng tham gia
       final QuerySnapshot projectsSnapshot = await _firestore
           .collection('Project')
@@ -174,7 +219,14 @@ class TaskRepository {
           
       print('Tìm thấy ${projectsSnapshot.docs.length} dự án');
       
-      final List<Task> firebaseTasks = [];
+      // Lấy tasks hiện có từ SharedPreferences
+      final localTasks = await taskDataProvider.getTasks();
+      print('Số task trong bộ nhớ cục bộ: ${localTasks.length}');
+      
+      // Tạo map từ id đến task để dễ dàng cập nhật
+      final Map<String, Task> localTaskMap = {
+        for (var task in localTasks) task.id: task
+      };
       
       // Duyệt qua từng project để lấy tasks
       for (var projectDoc in projectsSnapshot.docs) {
@@ -184,14 +236,35 @@ class TaskRepository {
         
         print('Đang lấy task từ dự án: $projectName (ID: $projectId)');
         
-        // Lấy tất cả các task trong project
-        final QuerySnapshot taskSnapshot = await _firestore
+        // Kiểm tra cache trước
+        final cachedTasks = await taskDataProvider.getCachedTasks(projectId);
+        if (cachedTasks.isNotEmpty) {
+          print('Sử dụng ${cachedTasks.length} task từ cache cho dự án $projectName');
+          
+          // Cập nhật từ cache vào map
+          for (var task in cachedTasks) {
+            localTaskMap[task.id] = task;
+          }
+          
+          // Tiếp tục với dự án tiếp theo nếu cache hợp lệ
+          continue;
+        }
+        
+        // Tạo query để lấy tasks, áp dụng đồng bộ gia tăng nếu có thời gian đồng bộ cuối cùng
+        Query query = _firestore
             .collection('Tasks')
             .doc(projectId)
-            .collection('projectTasks')
-            .get();
+            .collection('projectTasks');
             
-        print('Tìm thấy ${taskSnapshot.docs.length} task trong dự án $projectName');
+        if (lastSync != null) {
+          // Chỉ lấy các task đã được cập nhật sau lần đồng bộ cuối cùng
+          query = query.where('lastModified', isGreaterThan: lastSync);
+        }
+        
+        final QuerySnapshot taskSnapshot = await query.get();
+        print('Tìm thấy ${taskSnapshot.docs.length} task cần đồng bộ trong dự án $projectName');
+        
+        final List<Task> projectTasks = [];
         
         for (var doc in taskSnapshot.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -199,51 +272,30 @@ class TaskRepository {
           // In thông tin chi tiết về task
           print('Task ID: ${doc.id}');
           print('Task Name: ${data['taskName']}');
-          print('Deadline: ${data['deadlineDate']} ${data['deadlineTime']}');
-          print('Members: ${data['Members']}');
-          print('Status: ${data['status']}');
           
-          // Lọc các task có chứa email người dùng trong danh sách members trên phía client
-          final List<String> members = List<String>.from(data['Members'] ?? []);
-          
-          // Thêm task vào danh sách bất kể có phải là thành viên hay không để đảm bảo hiển thị đầy đủ
+          // Chuyển đổi thành Task object
           final task = _convertToTask(doc.id, data);
-          firebaseTasks.add(task);
+          projectTasks.add(task);
           
-          if (members.contains(currentUserEmail)) {
-            print('✓ Task được gán cho người dùng $currentUserEmail: ${task.title}');
-          } else {
-            print('✗ Task không được gán cho người dùng $currentUserEmail: ${task.title}');
-          }
+          // Cập nhật vào map
+          localTaskMap[task.id] = task;
+        }
+        
+        // Lưu cache cho dự án này
+        if (projectTasks.isNotEmpty) {
+          await taskDataProvider.saveProjectTasksCache(projectId, projectTasks);
+          print('Đã lưu cache cho dự án $projectName với ${projectTasks.length} task');
         }
       }
       
-      // Lấy tasks hiện có từ SharedPreferences
-      final localTasks = await taskDataProvider.getTasks();
-      print('Số task trong bộ nhớ cục bộ: ${localTasks.length}');
-      
-      // Kết hợp dữ liệu từ cả hai nguồn, loại bỏ trùng lặp
-      final Map<String, Task> uniqueTasks = {};
-      
-      // Thêm tasks từ SharedPreferences
-      for (var task in localTasks) {
-        uniqueTasks[task.id] = task;
-      }
-      
-      // Thêm tasks từ Firebase
-      for (var task in firebaseTasks) {
-        uniqueTasks[task.id] = task;
-      }
-      
-      // Lưu lại dữ liệu kết hợp vào SharedPreferences
-      final allTasks = uniqueTasks.values.toList();
+      // Chuyển map trở lại thành danh sách và lưu
+      final allTasks = localTaskMap.values.toList();
       await taskDataProvider.saveTasks(allTasks);
       
-      print('Đồng bộ hoàn tất: ${firebaseTasks.length} task từ Firebase, tổng cộng ${allTasks.length} task');
+      // Lưu thời gian đồng bộ
+      await taskDataProvider.saveLastSyncTime(DateTime.now());
       
-      // In ra tất cả các ngày có trong dữ liệu để debug
-      final allDates = allTasks.map((task) => task.deadlineDate).toSet().toList();
-      print('Các ngày có trong dữ liệu sau khi đồng bộ: $allDates');
+      print('Đồng bộ hoàn tất: tổng cộng ${allTasks.length} task');
     } catch (e) {
       print('Error syncing tasks from Firebase: $e');
     }
@@ -254,6 +306,7 @@ class TaskRepository {
     try {
       // Xóa dữ liệu cục bộ
       await taskDataProvider.saveTasks([]);
+      await taskDataProvider.clearCache();
       print('Đã xóa tất cả dữ liệu cục bộ');
       
       // Đồng bộ lại từ Firebase
@@ -344,6 +397,64 @@ class TaskRepository {
     } catch (e) {
       print('Lỗi khi tải task theo trang: $e');
       return [];
+    }
+  }
+  
+  // Đóng stream controller khi không cần thiết nữa
+  void dispose() {
+    _syncController.close();
+  }
+
+  // Lấy nhiệm vụ theo ID dự án
+  Future<List<Task>> getTasksByProjectId(String projectId) async {
+    try {
+      return await taskDataProvider.getTasksByProject(projectId);
+    } catch (e) {
+      print('Lỗi khi lấy nhiệm vụ theo dự án: $e');
+      return [];
+    }
+  }
+  
+  // Lấy danh sách thành viên dự án
+  Future<List<String>> getProjectMembers(String projectId) async {
+    try {
+      return await taskDataProvider.getProjectMembers(projectId);
+    } catch (e) {
+      print('Lỗi khi lấy danh sách thành viên: $e');
+      return [];
+    }
+  }
+  
+  // Tạo nhiệm vụ mới
+  Future<bool> createTask(Task task) async {
+    try {
+      await taskDataProvider.createTask(task);
+      return true;
+    } catch (e) {
+      print('Lỗi khi tạo nhiệm vụ: $e');
+      return false;
+    }
+  }
+  
+  // Cập nhật nhiệm vụ
+  Future<bool> updateTask(Task task) async {
+    try {
+      await taskDataProvider.updateTask(task);
+      return true;
+    } catch (e) {
+      print('Lỗi khi cập nhật nhiệm vụ: $e');
+      return false;
+    }
+  }
+  
+  // Xóa nhiệm vụ
+  Future<bool> deleteTask(String taskId) async {
+    try {
+      await taskDataProvider.deleteTask(taskId);
+      return true;
+    } catch (e) {
+      print('Lỗi khi xóa nhiệm vụ: $e');
+      return false;
     }
   }
 } 

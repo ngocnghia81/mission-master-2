@@ -64,35 +64,41 @@ class TaskCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Row(
-                    children: [
-                      // Hiển thị badge quá hạn nếu cần
-                      if (isOverdue)
-                        Container(
-                          margin: EdgeInsets.only(right: 8),
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.warning, color: Colors.white, size: 12),
-                              SizedBox(width: 2),
-                              Text(
-                                'Quá hạn',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 10,
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Hiển thị badge quá hạn nếu cần
+                        if (isOverdue)
+                          Container(
+                            margin: EdgeInsets.only(right: 8),
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.warning, color: Colors.white, size: 12),
+                                SizedBox(width: 2),
+                                Flexible(
+                                  child: Text(
+                                    'Quá hạn',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 10,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
-                      _buildPriorityBadge(task.priority),
-                    ],
+                        Flexible(child: _buildPriorityBadge(task.priority)),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -117,12 +123,15 @@ class TaskCard extends StatelessWidget {
                     color: isOverdue ? Colors.red : Colors.grey[600],
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    "${task.deadlineDate} ${task.deadlineTime}",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isOverdue ? Colors.red : Colors.grey[600],
-                      fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                  Flexible(
+                    child: Text(
+                      "${task.deadlineDate} ${task.deadlineTime}",
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isOverdue ? Colors.red : Colors.grey[600],
+                        fontWeight: isOverdue ? FontWeight.bold : FontWeight.normal,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (showProject) ...[
@@ -147,8 +156,8 @@ class TaskCard extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const Spacer(),
-                  _buildStatusIndicator(task.status),
+                  const SizedBox(width: 8),
+                  Flexible(child: _buildStatusIndicator(task.status)),
                 ],
               ),
             ],
@@ -187,6 +196,7 @@ class TaskCard extends StatelessWidget {
     }
 
     return Container(
+      constraints: BoxConstraints(maxWidth: 120), // Giới hạn chiều rộng tối đa
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
@@ -198,9 +208,12 @@ class TaskCard extends StatelessWidget {
         children: [
           Icon(icon, size: 12, color: color),
           const SizedBox(width: 4),
-          Text(
-            text,
-            style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),
@@ -209,6 +222,7 @@ class TaskCard extends StatelessWidget {
   
   Widget _buildStatusIndicator(String status) {
     return Container(
+      constraints: BoxConstraints(maxWidth: 100), // Giới hạn chiều rộng tối đa
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: _getStatusColor(status),
@@ -221,6 +235,8 @@ class TaskCard extends StatelessWidget {
           color: _getTextColorForStatus(status),
           fontWeight: FontWeight.bold,
         ),
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -257,4 +273,4 @@ class TaskCard extends StatelessWidget {
         return Colors.red.shade800;
     }
   }
-} 
+}

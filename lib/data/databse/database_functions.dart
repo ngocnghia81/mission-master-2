@@ -202,8 +202,8 @@ class Database {
         }
         
         // Lấy trạng thái hiện tại của task từ tài liệu đã kiểm tra
-        final taskData = taskDoc.data() as Map<String, dynamic>;
-        currentStatus = taskData['status'] as String?;
+          final taskData = taskDoc.data() as Map<String, dynamic>;
+          currentStatus = taskData['status'] as String?;
         
         // Kiểm tra quyền cập nhật
         final List<String> members = List<String>.from(taskData['Members'] ?? []);
@@ -214,10 +214,10 @@ class Database {
         
         // Cập nhật task với ID và project ID đã biết
         await taskDocRef.update({
-          'status': changeStatusTo,
+              'status': changeStatusTo,
           'lastUpdatedBy': currentUserEmail,
-          'lastUpdatedAt': DateTime.now(),
-        });
+              'lastUpdatedAt': DateTime.now(),
+            });
             
         // Lưu lịch sử cập nhật
         if (currentStatus != null && currentStatus != changeStatusTo) {
@@ -242,17 +242,17 @@ class Database {
         for (var projectDoc in projectsSnap.docs) {
           final projectTasksSnap = await projectDoc.reference
               .collection('projectTasks')
-              .where('taskName', isEqualTo: taskName)
+            .where('taskName', isEqualTo: taskName)
               .where('Members', arrayContains: currentUserEmail)
-              .get();
-              
+            .get();
+            
           if (projectTasksSnap.docs.isNotEmpty) {
             // Tìm thấy task, lấy thông tin
             final taskDoc = projectTasksSnap.docs.first;
             final taskData = taskDoc.data();
-            projectName = taskData['projectName'] as String?;
-            currentStatus = taskData['status'] as String?;
-            
+        projectName = taskData['projectName'] as String?;
+        currentStatus = taskData['status'] as String?;
+        
             // Kiểm tra quyền cập nhật
             final List<String> members = List<String>.from(taskData['Members'] ?? []);
             if (!members.contains(currentUserEmail)) {
@@ -262,82 +262,82 @@ class Database {
             
             // Cập nhật task
             await taskDoc.reference.update({
-              'status': changeStatusTo,
+          'status': changeStatusTo,
               'lastUpdatedBy': currentUserEmail,
-              'lastUpdatedAt': DateTime.now(),
-            });
-            
-            // Lưu lịch sử cập nhật
+          'lastUpdatedAt': DateTime.now(),
+        });
+        
+        // Lưu lịch sử cập nhật
             if (currentStatus != null && currentStatus != changeStatusTo) {
               await taskDoc.reference
-                  .collection('statusUpdates')
-                  .add({
-                    'fromStatus': currentStatus,
-                    'toStatus': changeStatusTo,
+              .collection('statusUpdates')
+              .add({
+                'fromStatus': currentStatus,
+                'toStatus': changeStatusTo,
                     'updatedBy': Auth.auth.currentUser!.displayName ?? currentUserEmail,
-                    'timestamp': FieldValue.serverTimestamp(),
-                  });
-            }
-            
-            // Nếu task được đánh dấu là hoàn thành, kiểm tra xem có trễ hạn không
-            if (changeStatusTo.toLowerCase() == 'completed') {
-              final String deadlineDate = taskData['deadlineDate'] as String;
+                'timestamp': FieldValue.serverTimestamp(),
+              });
+        }
+        
+        // Nếu task được đánh dấu là hoàn thành, kiểm tra xem có trễ hạn không
+        if (changeStatusTo.toLowerCase() == 'completed') {
+          final String deadlineDate = taskData['deadlineDate'] as String;
+          
+          try {
+            // Chuyển đổi deadline thành DateTime
+            final dateFormat = deadlineDate.split('/');
+            if (dateFormat.length == 3) {
+              final deadline = DateTime(
+                int.parse(dateFormat[2]), 
+                int.parse(dateFormat[1]), 
+                int.parse(dateFormat[0])
+              );
               
-              try {
-                // Chuyển đổi deadline thành DateTime
-                final dateFormat = deadlineDate.split('/');
-                if (dateFormat.length == 3) {
-                  final deadline = DateTime(
-                    int.parse(dateFormat[2]), 
-                    int.parse(dateFormat[1]), 
-                    int.parse(dateFormat[0])
-                  );
-                  
-                  // Nếu đã quá hạn, thông báo cho người dùng
-                  if (DateTime.now().isAfter(deadline)) {
-                    // Gửi thông báo hoàn thành trễ
-                    noti.showLocalNotification(
-                      title: 'Công việc hoàn thành trễ hạn',
-                      body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được hoàn thành sau hạn chót',
-                    );
-                    
-                    // Thông báo cho các thành viên khác
-                    _notifyOtherMembers(
-                      taskData: taskData,
-                      title: 'Công việc đã hoàn thành trễ hạn',
-                      body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}" (trễ hạn)',
-                    );
-                  } else {
-                    // Gửi thông báo hoàn thành đúng hạn
-                    noti.showLocalNotification(
-                      title: 'Công việc hoàn thành',
-                      body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được hoàn thành đúng hạn',
-                    );
-                    
-                    // Thông báo cho các thành viên khác
-                    _notifyOtherMembers(
-                      taskData: taskData,
-                      title: 'Công việc đã hoàn thành',
-                      body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}"',
-                    );
-                  }
-                }
-              } catch (e) {
-                print('Lỗi khi kiểm tra deadline: $e');
+              // Nếu đã quá hạn, thông báo cho người dùng
+              if (DateTime.now().isAfter(deadline)) {
+                // Gửi thông báo hoàn thành trễ
+                noti.showLocalNotification(
+                  title: 'Công việc hoàn thành trễ hạn',
+                  body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được hoàn thành sau hạn chót',
+                );
+                
+                // Thông báo cho các thành viên khác
+                _notifyOtherMembers(
+                  taskData: taskData,
+                  title: 'Công việc đã hoàn thành trễ hạn',
+                  body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}" (trễ hạn)',
+                );
+              } else {
+                // Gửi thông báo hoàn thành đúng hạn
+                noti.showLocalNotification(
+                  title: 'Công việc hoàn thành',
+                  body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được hoàn thành đúng hạn',
+                );
+                
+                // Thông báo cho các thành viên khác
+                _notifyOtherMembers(
+                  taskData: taskData,
+                  title: 'Công việc đã hoàn thành',
+                  body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}"',
+                );
               }
-            } else if (changeStatusTo.toLowerCase() == 'in progress') {
-              // Thông báo task đang được thực hiện
-              noti.showLocalNotification(
-                title: 'Công việc đang thực hiện',
-                body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được bắt đầu thực hiện',
-              );
-              
-              // Thông báo cho các thành viên khác
-              _notifyOtherMembers(
-                taskData: taskData,
-                title: 'Công việc đã được bắt đầu',
-                body: '${Auth.auth.currentUser!.displayName} đã bắt đầu thực hiện công việc "$taskName" trong dự án "${projectName ?? ''}"',
-              );
+            }
+          } catch (e) {
+            print('Lỗi khi kiểm tra deadline: $e');
+          }
+        } else if (changeStatusTo.toLowerCase() == 'in progress') {
+          // Thông báo task đang được thực hiện
+          noti.showLocalNotification(
+            title: 'Công việc đang thực hiện',
+            body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được bắt đầu thực hiện',
+          );
+          
+          // Thông báo cho các thành viên khác
+          _notifyOtherMembers(
+            taskData: taskData,
+            title: 'Công việc đã được bắt đầu',
+            body: '${Auth.auth.currentUser!.displayName} đã bắt đầu thực hiện công việc "$taskName" trong dự án "${projectName ?? ''}"',
+          );
             }
             
             foundTask = true;

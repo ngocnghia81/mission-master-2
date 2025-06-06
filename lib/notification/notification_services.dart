@@ -322,31 +322,5 @@ class NotificationServices {
     }
   }
 
-  // Gửi thông báo kiểm tra
-  Future<void> sendTestNotification() async {
-    try {
-      DateTime today = DateTime.now();
-      String currentDate = "${today.day}/${today.month}/${today.year}";
-      
-      // Tạo thông báo kiểm tra
-      await FirebaseFirestore.instance.collection('Notifications').doc().set({
-        'title': 'Thông báo kiểm tra',
-        'body': 'Đây là thông báo kiểm tra được tạo lúc ${today.hour}:${today.minute}',
-        'receiveDate': currentDate,
-        'receiveTo': Auth.auth.currentUser!.email,
-        'isRead': false,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      
-      // Hiển thị thông báo cục bộ
-      await showLocalNotification(
-        title: 'Thông báo kiểm tra',
-        body: 'Đây là thông báo kiểm tra được tạo lúc ${today.hour}:${today.minute}',
-      );
-      
-      print('Đã gửi thông báo kiểm tra');
-    } catch (e) {
-      print('Lỗi khi gửi thông báo kiểm tra: $e');
-    }
-  }
+
 }

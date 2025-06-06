@@ -17,6 +17,9 @@ class AppColors {
   static const Color taskInProgress = Color(0xFFB7D8FF);
   static const Color taskCompleted = Color(0xFFB9FFDD);
   
+  static const Color primary = Color(0xFF5B67CA);
+  static const Color primaryLight = Color(0xFFE6E8F5);
+  
   static const List<Color> workspaceGradientColor1 = [
     Color(0xFF5B67CA),
     Color(0xFF9733EE),
