@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mission_master/constants/colors.dart';
 import 'package:mission_master/data/models/enterprise_project_model.dart';
 import 'package:mission_master/data/repositories/enterprise_project_repository.dart';
+import 'package:mission_master/data/services/user_validation_service.dart';
 import 'package:mission_master/routes/routes.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -88,20 +89,39 @@ class _EnterpriseProjectScreenState extends State<EnterpriseProjectScreen> {
     super.dispose();
   }
   
-  void _addMember() {
+  void _addMember() async {
     final email = _memberEmailController.text.trim();
-    if (email.isNotEmpty && email.contains('@')) {
-      if (!_memberEmails.contains(email)) {
-        setState(() {
-          _memberEmails.add(email);
-          _memberEmailController.clear();
-        });
-      } else {
-        _showErrorSnackBar('Email đã tồn tại trong danh sách');
-      }
-    } else {
-      _showErrorSnackBar('Email không hợp lệ');
+    
+    if (email.isEmpty) {
+      _showErrorSnackBar('Vui lòng nhập email');
+      return;
     }
+    
+    // Kiểm tra format email
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      _showErrorSnackBar('Email không hợp lệ');
+      return;
+    }
+    
+    // Kiểm tra email có trong hệ thống
+    final bool isEmailRegistered = await UserValidationService.isEmailRegistered(email);
+    if (!isEmailRegistered) {
+      _showErrorSnackBar('Email "$email" chưa đăng ký trong hệ thống.\nChỉ có thể thêm những email đã có tài khoản.');
+      return;
+    }
+    
+    // Kiểm tra trùng lặp
+    if (_memberEmails.contains(email)) {
+      _showErrorSnackBar('Email đã tồn tại trong danh sách');
+      return;
+    }
+    
+    setState(() {
+      _memberEmails.add(email);
+      _memberEmailController.clear();
+    });
+    
+    _showSuccessSnackBar('Đã thêm thành viên: $email');
   }
   
   void _removeMember(int index) {

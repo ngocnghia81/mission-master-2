@@ -137,7 +137,11 @@ class Database {
       String? currentStatus;
       
       if (taskId != null && projectId != null) {
-        print("Đang cập nhật task với ID: $taskId trong dự án: $projectId");
+        print("=== BẮTĐẦU CẬP NHẬT TASK ===");
+        print("Task ID: $taskId");
+        print("Project ID: $projectId");
+        print("Change Status To: $changeStatusTo");
+        print("Current User: $currentUserEmail");
         
         // Kiểm tra xem taskId và projectId có giống nhau không
         if (taskId == projectId) {
@@ -159,12 +163,14 @@ class Database {
               final taskData = taskDoc.data();
               currentStatus = taskData['status'] as String?;
               
-              // Kiểm tra quyền cập nhật
-              final List<String> members = List<String>.from(taskData['Members'] ?? []);
-              if (!members.contains(currentUserEmail)) {
-                print("Lỗi: Người dùng $currentUserEmail không có quyền cập nhật task này");
-                return false;
-              }
+                      // Kiểm tra quyền cập nhật - chỉ người được giao mới có thể cập nhật
+        final List<String> members = List<String>.from(taskData['Members'] ?? []);
+        if (!members.contains(currentUserEmail)) {
+          print("Lỗi: Người dùng $currentUserEmail không có quyền cập nhật task này");
+          print("Danh sách được giao: $members");
+          print("Email hiện tại: $currentUserEmail");
+          return false;
+        }
               
               await taskDoc.reference.update({
                 'status': changeStatusTo,
@@ -181,34 +187,71 @@ class Database {
           return false;
         }
         
-        // Kiểm tra xem tài liệu có tồn tại không trước khi cập nhật
-        final taskDocRef = firestore
+        // Kiểm tra trong Regular Projects trước
+        DocumentReference taskDocRef = firestore
             .collection('Tasks')
             .doc(projectId)
             .collection('projectTasks')
             .doc(taskId);
             
-        final taskDoc = await taskDocRef.get();
+        DocumentSnapshot taskDoc = await taskDocRef.get();
+        
+        // Nếu không tìm thấy trong Regular Projects, thử tìm trong Enterprise Tasks
         if (!taskDoc.exists) {
-          print("Lỗi: Không tìm thấy task với ID: $taskId trong dự án: $projectId");
-          return false;
+          print("Không tìm thấy trong Regular Projects, đang tìm trong Enterprise Tasks...");
+          
+          // Tìm trong EnterpriseTasks collection
+          final QuerySnapshot enterpriseTaskQuery = await firestore
+              .collection('EnterpriseTasks')
+              .where('id', isEqualTo: taskId)
+              .where('projectId', isEqualTo: projectId)
+              .limit(1)
+              .get();
+          
+          if (enterpriseTaskQuery.docs.isNotEmpty) {
+            taskDoc = enterpriseTaskQuery.docs.first;
+            taskDocRef = taskDoc.reference;
+            print("✅ Tìm thấy task trong Enterprise Tasks");
+          } else {
+            print("Lỗi: Không tìm thấy task với ID: $taskId trong dự án: $projectId (đã tìm cả Regular và Enterprise)");
+            return false;
+          }
+        } else {
+          print("✅ Tìm thấy task trong Regular Projects");
         }
             
-        // Lấy thông tin dự án và trạng thái hiện tại
-        final projectDoc = await firestore.collection('Project').doc(projectId).get();
+        // Lấy thông tin dự án và trạng thái hiện tại        
+        // Lấy thông tin project (tìm trong cả Regular và Enterprise)
+        DocumentSnapshot projectDoc = await firestore.collection('Project').doc(projectId).get();
+        if (!projectDoc.exists) {
+          projectDoc = await firestore.collection('EnterpriseProjects').doc(projectId).get();
+        }
         if (projectDoc.exists) {
           final projectData = projectDoc.data() as Map<String, dynamic>;
-          projectName = projectData['projectName'] as String?;
+          projectName = projectData['projectName'] ?? projectData['name'] as String?;
         }
         
         // Lấy trạng thái hiện tại của task từ tài liệu đã kiểm tra
-          final taskData = taskDoc.data() as Map<String, dynamic>;
-          currentStatus = taskData['status'] as String?;
+        final taskData = taskDoc.data() as Map<String, dynamic>;
+        currentStatus = taskData['status'] as String?;
+        print("📄 Task Data Keys: ${taskData.keys.toList()}");
         
-        // Kiểm tra quyền cập nhật
-        final List<String> members = List<String>.from(taskData['Members'] ?? []);
+        // Kiểm tra quyền cập nhật - chỉ người được giao mới có thể cập nhật
+        // Lấy danh sách thành viên từ các field khác nhau (Members hoặc assignedTo)
+        List<String> members = [];
+        if (taskData['Members'] != null) {
+          members = List<String>.from(taskData['Members']);
+        } else if (taskData['assignedTo'] != null) {
+          members = List<String>.from(taskData['assignedTo']);
+        } else if (taskData['members'] != null) {
+          members = List<String>.from(taskData['members']);
+        }
+        
         if (!members.contains(currentUserEmail)) {
           print("Lỗi: Người dùng $currentUserEmail không có quyền cập nhật task này");
+          print("Danh sách được giao: $members");
+          print("Email hiện tại: $currentUserEmail");
+          print("Task data keys: ${taskData.keys.toList()}");
           return false;
         }
         
@@ -253,10 +296,12 @@ class Database {
         projectName = taskData['projectName'] as String?;
         currentStatus = taskData['status'] as String?;
         
-            // Kiểm tra quyền cập nhật
+            // Kiểm tra quyền cập nhật - chỉ người được giao mới có thể cập nhật
             final List<String> members = List<String>.from(taskData['Members'] ?? []);
             if (!members.contains(currentUserEmail)) {
               print("Lỗi: Người dùng $currentUserEmail không có quyền cập nhật task này");
+              print("Danh sách được giao: $members");
+              print("Email hiện tại: $currentUserEmail");
               continue; // Tiếp tục tìm task khác nếu có
             }
             
@@ -314,12 +359,12 @@ class Database {
                   body: 'Công việc "$taskName" trong dự án "${projectName ?? ''}" đã được hoàn thành đúng hạn',
                 );
                 
-                // Thông báo cho các thành viên khác
-                _notifyOtherMembers(
-                  taskData: taskData,
-                  title: 'Công việc đã hoàn thành',
-                  body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}"',
-                );
+                        // Thông báo cho các thành viên khác
+        _notifyOtherMembers(
+          taskData: taskData,
+          title: 'Công việc đã hoàn thành',
+          body: '${Auth.auth.currentUser!.displayName} đã hoàn thành công việc "$taskName" trong dự án "${projectName ?? ''}"',
+        );
               }
             }
           } catch (e) {
@@ -365,8 +410,15 @@ class Database {
     required String body,
   }) async {
     try {
-      // Lấy danh sách email của các thành viên
-      final List<String> members = List<String>.from(taskData['Members'] ?? []);
+      // Lấy danh sách email của các thành viên từ các field khác nhau
+      List<String> members = [];
+      if (taskData['Members'] != null) {
+        members = List<String>.from(taskData['Members']);
+      } else if (taskData['assignedTo'] != null) {
+        members = List<String>.from(taskData['assignedTo']);
+      } else if (taskData['members'] != null) {
+        members = List<String>.from(taskData['members']);
+      }
       
       // Lọc ra các thành viên khác (không phải người dùng hiện tại)
       final currentUserEmail = Auth.auth.currentUser?.email;
@@ -561,11 +613,27 @@ class Database {
           .where('receiveTo', isEqualTo: currentUser.uid)
           .get();
 
-      // Cập nhật từng thông báo để sử dụng email thay vì uid
+      // Cập nhật từng thông báo để sử dụng email thay vì uid và thêm isRead
       for (DocumentSnapshot doc in notificationsSnapshot.docs) {
         await doc.reference.update({
           'receiveTo': currentUser.email,
+          'isRead': true, // Đánh dấu các thông báo cũ là đã đọc
         });
+      }
+
+      // Kiểm tra và cập nhật các thông báo thiếu trường isRead
+      QuerySnapshot existingNotifications = await firestore
+          .collection('Notifications')
+          .where('receiveTo', isEqualTo: currentUser.email)
+          .get();
+
+      for (DocumentSnapshot doc in existingNotifications.docs) {
+        Map<String, dynamic>? data = doc.data() as Map<String, dynamic>?;
+        if (data != null && !data.containsKey('isRead')) {
+          await doc.reference.update({
+            'isRead': true, // Đánh dấu các thông báo cũ thiếu trường isRead là đã đọc
+          });
+        }
       }
 
       print("Đã chuyển đổi ${notificationsSnapshot.docs.length} thông báo sang định dạng mới");

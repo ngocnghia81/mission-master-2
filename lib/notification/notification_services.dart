@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:app_settings/app_settings.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -11,6 +12,9 @@ import 'package:googleapis_auth/auth_io.dart' as auth;
 import 'package:mission_master/data/Authentications/google_signin.dart';
 import 'package:mission_master/data/databse/database_functions.dart';
 import 'package:mission_master/injection/database.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mission_master/bloc/bottomNavBarBloc/bloc.dart';
+import 'package:mission_master/bloc/bottomNavBarBloc/events.dart';
 
 import 'package:mission_master/routes/routes.dart';
 import 'package:http/http.dart' as http;
@@ -30,6 +34,31 @@ class NotificationServices {
     importance: Importance.max,
   );
 
+  // Hàm chuyển đến tab thông báo thay vì navigate route
+  void _navigateToNotificationTab(BuildContext context) {
+    try {
+      // Thử tìm NavBarBloc trong context
+      final navBarBloc = context.read<NavBarBloc>();
+      navBarBloc.add(currentPage(index: 3)); // Tab thông báo là index 3
+    } catch (e) {
+      print('Không thể chuyển tab thông báo: $e');
+      // Fallback: sử dụng navigation route
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        AppRoutes.main, 
+        (route) => false
+      );
+      // Sau đó chuyển tab (có thể cần delay nhỏ)
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          final navBarBloc = context.read<NavBarBloc>();
+          navBarBloc.add(currentPage(index: 3));
+        } catch (e) {
+          print('Không thể chuyển tab sau khi navigate: $e');
+        }
+      });
+    }
+  }
+
   // Hàm này nên được gọi sớm trong vòng đời ứng dụng
   Future<void> initializeNotifications(BuildContext context) async {
     // Yêu cầu quyền
@@ -46,6 +75,9 @@ class NotificationServices {
     
     // Lắng nghe thay đổi token
     isTokenRefresh();
+    
+    // Sửa các thông báo thiếu trường isRead
+    await fixMissingIsReadField();
     
     // Đăng ký nhận thông báo chung
     await subscribeToTopics();
@@ -78,8 +110,8 @@ class NotificationServices {
     await flutterLocalNotificationsPlugin.initialize(
       initializedSettings,
       onDidReceiveNotificationResponse: (payload) {
-        // Chuyển đến màn hình thông báo
-        Navigator.of(context).pushNamed(AppRoutes.notification);
+        // Chuyển đến tab thông báo thay vì route
+        _navigateToNotificationTab(context);
         
         // Lưu thông báo nếu có
         if (payload.payload != null) {
@@ -192,8 +224,8 @@ class NotificationServices {
   // Xử lý khi nhấn vào thông báo
   void handleMessage(BuildContext context, RemoteMessage message) {
     if (message.notification != null) {
-      // Chuyển đến màn hình thông báo
-      Navigator.of(context).pushNamed(AppRoutes.notification);
+      // Chuyển đến tab thông báo thay vì route
+      _navigateToNotificationTab(context);
     }
   }
 
@@ -229,6 +261,8 @@ class NotificationServices {
         'body': 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline',
         'receiveDate': currentDate,
         'receiveTo': member,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
       });
       
       // Hiển thị thông báo cục bộ nếu người dùng là người giao việc
@@ -300,6 +334,51 @@ class NotificationServices {
     
     // Lưu thông báo vào Firestore
     await project().saveNotifications(title: title, body: body);
+  }
+
+  // Sửa các thông báo thiếu trường isRead và timestamp
+  Future<void> fixMissingIsReadField() async {
+    try {
+      User? currentUser = Auth.auth.currentUser;
+      if (currentUser == null) return;
+
+      // Lấy tất cả thông báo của người dùng hiện tại
+      QuerySnapshot notifications = await FirebaseFirestore.instance
+          .collection('Notifications')
+          .where('receiveTo', isEqualTo: currentUser.email)
+          .get();
+
+      int fixedCount = 0;
+      
+      for (DocumentSnapshot doc in notifications.docs) {
+        Map<String, dynamic>? data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          Map<String, dynamic> updates = {};
+          
+          // Kiểm tra và thêm trường isRead nếu thiếu
+          if (!data.containsKey('isRead')) {
+            updates['isRead'] = true; // Đánh dấu các thông báo cũ là đã đọc
+            fixedCount++;
+          }
+          
+          // Kiểm tra và thêm trường timestamp nếu thiếu
+          if (!data.containsKey('timestamp')) {
+            updates['timestamp'] = FieldValue.serverTimestamp();
+          }
+          
+          // Chỉ cập nhật nếu có thay đổi
+          if (updates.isNotEmpty) {
+            await doc.reference.update(updates);
+          }
+        }
+      }
+
+      if (fixedCount > 0) {
+        print("Đã sửa $fixedCount thông báo thiếu trường isRead và timestamp");
+      }
+    } catch (e) {
+      print("Lỗi khi sửa thông báo thiếu trường isRead và timestamp: $e");
+    }
   }
 
   // Đăng ký nhận thông báo theo chủ đề

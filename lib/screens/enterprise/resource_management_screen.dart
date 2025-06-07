@@ -80,6 +80,9 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
     try {
       final resources = await _resourceRepository.getProjectResources(widget.projectId);
       final allocations = await _resourceRepository.getResourceAllocations(widget.projectId);
+      
+      // Đồng bộ ngân sách trước khi lấy dữ liệu
+      await _resourceRepository.syncBudgetWithItems(widget.projectId);
       final budget = await _resourceRepository.getProjectBudget(widget.projectId);
       
       setState(() {

@@ -126,34 +126,13 @@ class _NotificationsState extends State<Notifications> {
     final size = MediaQuery.of(context).size;
     
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Thông báo'),
-        backgroundColor: AppColors.primaryColor,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.done_all),
-            tooltip: 'Đánh dấu tất cả đã đọc',
-            onPressed: _markAllAsRead,
-          ),
-          IconButton(
-            icon: Icon(Icons.refresh),
-            tooltip: 'Làm mới',
-            onPressed: () {
-              setState(() {});
-            },
-          ),
-        ],
-      ),
-
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : StreamBuilder(
         stream: FirebaseFirestore.instance
             .collection('Notifications')
             .where('receiveTo', isEqualTo: Auth.auth.currentUser!.email)
-            .orderBy('receiveDate', descending: true)
-                  .limit(30)
+            .limit(50)
             .snapshots(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
@@ -161,13 +140,42 @@ class _NotificationsState extends State<Notifications> {
               child: CircularProgressIndicator(),
             );
           } else {
-            return snapshot.data!.docs.isNotEmpty &&
+            // Sắp xếp thông báo theo timestamp (mới nhất trước)
+            List<DocumentSnapshot> sortedDocs = List.from(snapshot.data!.docs);
+            sortedDocs.sort((a, b) {
+              Map<String, dynamic>? dataA = a.data() as Map<String, dynamic>?;
+              Map<String, dynamic>? dataB = b.data() as Map<String, dynamic>?;
+              
+              Timestamp? timestampA = dataA?['timestamp'] as Timestamp?;
+              Timestamp? timestampB = dataB?['timestamp'] as Timestamp?;
+              
+              // Nếu cả hai đều có timestamp, so sánh
+              if (timestampA != null && timestampB != null) {
+                return timestampB.compareTo(timestampA);
+              }
+              
+              // Nếu chỉ có một cái có timestamp, cái có timestamp sẽ được ưu tiên
+              if (timestampA != null && timestampB == null) return -1;
+              if (timestampA == null && timestampB != null) return 1;
+              
+              // Nếu cả hai đều không có timestamp, sắp xếp theo receiveDate
+              String? dateA = dataA?['receiveDate'] as String?;
+              String? dateB = dataB?['receiveDate'] as String?;
+              
+              if (dateA != null && dateB != null) {
+                return dateB.compareTo(dateA);
+              }
+              
+              return 0;
+            });
+            
+            return sortedDocs.isNotEmpty &&
                     snapshot.connectionState == ConnectionState.active
                 ? ListView.builder(
                     padding: EdgeInsets.all(16),
-                    itemCount: snapshot.data!.docs.length,
+                    itemCount: sortedDocs.length,
                     itemBuilder: (context, index) {
-                      DocumentSnapshot doc = snapshot.data!.docs[index];
+                      DocumentSnapshot doc = sortedDocs[index];
                             // Kiểm tra trạng thái đã đọc với null safety
                             bool isRead = doc.data() is Map<String, dynamic> 
                                 ? (doc.data() as Map<String, dynamic>)['isRead'] ?? false 
@@ -176,7 +184,7 @@ class _NotificationsState extends State<Notifications> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                                if (index == 0 || _formatDate(doc['receiveDate']) != _formatDate(snapshot.data!.docs[index - 1]['receiveDate']))
+                                if (index == 0 || _formatDate(doc['receiveDate']) != _formatDate(sortedDocs[index - 1]['receiveDate']))
                                   Padding(
                                     padding: EdgeInsets.only(top: 8.0, bottom: 4.0),
                                     child: text(

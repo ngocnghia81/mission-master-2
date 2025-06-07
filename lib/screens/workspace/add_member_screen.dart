@@ -13,18 +13,89 @@ import 'package:mission_master/bloc/removeMemberFromProjectBloc/removeMember_sta
 import 'package:mission_master/constants/colors.dart';
 import 'package:mission_master/constants/fonts.dart';
 import 'package:mission_master/data/databse/database_functions.dart';
+import 'package:mission_master/data/services/user_validation_service.dart';
 import 'package:mission_master/injection/database.dart';
 import 'package:mission_master/widgets/text.dart';
 import 'package:mission_master/widgets/workspace/header.dart';
 
-class AddMemberScreen extends StatelessWidget {
+class AddMemberScreen extends StatefulWidget {
   const AddMemberScreen({super.key});
+
+  @override
+  State<AddMemberScreen> createState() => _AddMemberScreenState();
+}
+
+class _AddMemberScreenState extends State<AddMemberScreen> {
+  final TextEditingController emailController = TextEditingController();
+  var project = locator<Database>();
+  List<String> _suggestedEmails = [];
+  bool _isLoadingSuggestions = false;
+  bool _isValidEmail = false;
+  String? _emailValidationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRegisteredEmails();
+    emailController.addListener(_onEmailChanged);
+  }
+
+  @override
+  void dispose() {
+    emailController.removeListener(_onEmailChanged);
+    emailController.dispose();
+    super.dispose();
+  }
+
+  void _loadRegisteredEmails() async {
+    setState(() {
+      _isLoadingSuggestions = true;
+    });
+    try {
+      final emails = await UserValidationService.getRegisteredEmails();
+      setState(() {
+        _suggestedEmails = emails;
+        _isLoadingSuggestions = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoadingSuggestions = false;
+      });
+    }
+  }
+
+  void _onEmailChanged() async {
+    final email = emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _isValidEmail = false;
+        _emailValidationMessage = null;
+      });
+      return;
+    }
+
+    // Kiểm tra format email
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      setState(() {
+        _isValidEmail = false;
+        _emailValidationMessage = 'Email không hợp lệ';
+      });
+      return;
+    }
+
+    // Kiểm tra email có trong hệ thống
+    final isRegistered = await UserValidationService.isEmailRegistered(email);
+    setState(() {
+      _isValidEmail = isRegistered;
+      _emailValidationMessage = isRegistered 
+          ? 'Email hợp lệ ✓' 
+          : 'Email chưa đăng ký trong hệ thống';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final TextEditingController emailController = TextEditingController();
-    var project = locator<Database>;
     return header(
       child: Column(
         children: [
@@ -51,27 +122,97 @@ class AddMemberScreen extends StatelessWidget {
               ),
             ],
           ),
-          TextFormField(
-            controller: emailController,
-            autovalidateMode: AutovalidateMode.onUserInteraction,
-            autofillHints: [AutofillHints.email],
-            decoration: InputDecoration(
-              suffixIcon: IconButton(
-                onPressed: () {},
-                icon: Icon(Icons.person_add_alt_1_outlined),
-              ),
-              hintText: "i.e: abc@gmail.com",
-              hintStyle: TextStyle(
-                color: AppColors.grey,
-                fontSize: size.width * 0.04,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(size.width * 0.03),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(size.width * 0.03),
-              ),
-            ),
+          // Email input with autocomplete
+          Autocomplete<String>(
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return _suggestedEmails.take(5);
+              }
+              return _suggestedEmails.where((email) =>
+                  email.toLowerCase().contains(textEditingValue.text.toLowerCase())).take(5);
+            },
+            onSelected: (String selection) {
+              emailController.text = selection;
+            },
+            fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+              // Đồng bộ controller
+              if (controller.text != emailController.text) {
+                controller.text = emailController.text;
+              }
+              controller.addListener(() {
+                if (emailController.text != controller.text) {
+                  emailController.text = controller.text;
+                }
+              });
+              
+              return TextFormField(
+                controller: controller,
+                focusNode: focusNode,
+                onEditingComplete: onEditingComplete,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                autofillHints: [AutofillHints.email],
+                decoration: InputDecoration(
+                  suffixIcon: _isLoadingSuggestions 
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          _isValidEmail ? Icons.check_circle : Icons.person_add_alt_1_outlined,
+                          color: _isValidEmail ? Colors.green : AppColors.grey,
+                        ),
+                  hintText: "Chọn email từ danh sách hoặc nhập email",
+                  helperText: _emailValidationMessage,
+                  helperStyle: TextStyle(
+                    color: _isValidEmail ? Colors.green : Colors.red,
+                    fontSize: size.width * 0.03,
+                  ),
+                  hintStyle: TextStyle(
+                    color: AppColors.grey,
+                    fontSize: size.width * 0.04,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(size.width * 0.03),
+                    borderSide: BorderSide(
+                      color: _isValidEmail ? Colors.green : AppColors.grey,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(size.width * 0.03),
+                    borderSide: BorderSide(
+                      color: _isValidEmail ? Colors.green : AppColors.primaryColor,
+                    ),
+                  ),
+                ),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 4,
+                  child: Container(
+                    width: size.width * 0.9,
+                    constraints: BoxConstraints(maxHeight: 200),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      itemBuilder: (context, index) {
+                        final option = options.elementAt(index);
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(Icons.person, size: 20),
+                          title: Text(option),
+                          onTap: () => onSelected(option),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
           Container(
             alignment: Alignment.topLeft,
@@ -85,7 +226,7 @@ class AddMemberScreen extends StatelessWidget {
           ),
           Expanded(
             child: StreamBuilder<Object>(
-                stream: project().getMembersOfProject(),
+                stream: project.getMembersOfProject(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -202,11 +343,15 @@ class AddMemberScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(size.width * 0.03),
                   ),
                 ),
-                onPressed: () {
+                onPressed: _isValidEmail ? () {
                   BlocProvider.of<AddMemberToProjectBloc>(context).add(
                       AddMemberToProject(memberEmail: emailController.text));
                   emailController.clear();
-                },
+                  setState(() {
+                    _isValidEmail = false;
+                    _emailValidationMessage = null;
+                  });
+                } : null,
                 child: text(
                     title: 'Thêm',
                     fontSize: size.width * 0.04,

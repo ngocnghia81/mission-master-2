@@ -14,6 +14,7 @@ import 'package:mission_master/constants/fonts.dart';
 import 'package:mission_master/constants/vi_labels.dart';
 import 'package:mission_master/controllers/project_controller.dart';
 import 'package:mission_master/data/databse/database_functions.dart';
+import 'package:mission_master/data/services/user_validation_service.dart';
 import 'package:mission_master/injection/database.dart';
 import 'package:mission_master/screens/workspace/chips.dart';
 import 'package:mission_master/widgets/text.dart';
@@ -146,7 +147,7 @@ class _AddTaskState extends State<AddTask> with SingleTickerProviderStateMixin {
     );
     
     // Xử lý lưu form
-    void handleSave() {
+    void handleSave() async {
       // Kiểm tra xem đã chọn người được giao chưa
       if (_selectedMembers.isEmpty) {
         Utils.showtoast("Vui lòng chọn ít nhất một người để giao việc");
@@ -162,6 +163,16 @@ class _AddTaskState extends State<AddTask> with SingleTickerProviderStateMixin {
       if (dateController.text.isEmpty || timeController.text.isEmpty) {
         Utils.showtoast("Vui lòng chọn thời hạn cho công việc");
         return;
+      }
+      
+      // Kiểm tra tất cả thành viên được giao có trong dự án không
+      final String projectId = projectController.projectId.string;
+      for (String memberEmail in _selectedMembers) {
+        final bool isInProject = await UserValidationService.isUserInProject(memberEmail, projectId);
+        if (!isInProject) {
+          Utils.showtoast("Thành viên $memberEmail không thuộc dự án này.\nChỉ có thể giao việc cho thành viên trong dự án.");
+          return;
+        }
       }
       
       // In ra danh sách thành viên để debug

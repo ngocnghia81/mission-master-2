@@ -322,6 +322,10 @@ class ResourceRepository {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      // Đồng bộ Budget sau khi thêm BudgetItem
+      await syncBudgetWithItems(item.projectId);
+      
       return docRef.id;
     } catch (e) {
       print('Error adding budget item: $e');
@@ -335,6 +339,10 @@ class ResourceRepository {
         ...item.toJson(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
+      
+      // Đồng bộ Budget sau khi cập nhật BudgetItem
+      await syncBudgetWithItems(item.projectId);
+      
       return true;
     } catch (e) {
       print('Error updating budget item: $e');
@@ -344,7 +352,17 @@ class ResourceRepository {
 
   Future<bool> deleteBudgetItem(String id) async {
     try {
+      // Lấy thông tin item trước khi xóa để biết projectId
+      final doc = await _firestore.collection('budget_items').doc(id).get();
+      if (!doc.exists) return false;
+      
+      final item = BudgetItem.fromJson({...doc.data()!, 'id': doc.id});
+      
       await _firestore.collection('budget_items').doc(id).delete();
+      
+      // Đồng bộ Budget sau khi xóa BudgetItem
+      await syncBudgetWithItems(item.projectId);
+      
       return true;
     } catch (e) {
       print('Error deleting budget item: $e');
@@ -476,6 +494,48 @@ class ResourceRepository {
         return 'other';
       default:
         return 'other';
+    }
+  }
+
+  // Phương thức đồng bộ Budget và BudgetItems
+  Future<bool> syncBudgetWithItems(String projectId) async {
+    try {
+      // Lấy tất cả BudgetItems của project
+      final items = await getBudgetItems(projectId);
+      
+      // Tính tổng từ BudgetItems
+      final totalFromItems = items.fold(0.0, (sum, item) => sum + item.allocatedAmount);
+      final spentFromItems = items.fold(0.0, (sum, item) => sum + item.spentAmount);
+      
+      // Tính categoryAllocation từ BudgetItems
+      final Map<String, double> categoryAllocation = {};
+      for (var item in items) {
+        final category = item.category;
+        categoryAllocation[category] = (categoryAllocation[category] ?? 0.0) + item.allocatedAmount;
+      }
+      
+      print('DEBUG: Sync budget - Total: $totalFromItems, Spent: $spentFromItems');
+      print('DEBUG: Category allocation from items: $categoryAllocation');
+      
+      // Lấy Budget hiện tại
+      final budget = await getProjectBudget(projectId);
+      if (budget == null) return false;
+      
+      // Cập nhật Budget với dữ liệu từ BudgetItems
+      final updatedBudget = budget.copyWith(
+        totalBudget: totalFromItems,
+        spentBudget: spentFromItems,
+        allocatedBudget: totalFromItems, // Coi như đã phân bổ hết
+        categoryAllocation: categoryAllocation, // Đồng bộ categoryAllocation
+        updatedAt: DateTime.now(),
+      );
+      
+      await updateBudget(updatedBudget);
+      print('DEBUG: Budget synced successfully with categoryAllocation: ${updatedBudget.categoryAllocation}');
+      return true;
+    } catch (e) {
+      print('Error syncing budget with items: $e');
+      return false;
     }
   }
 } 

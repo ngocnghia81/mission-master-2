@@ -247,9 +247,16 @@ class _BudgetManagementScreenState extends State<BudgetManagementScreen> {
               children: [
                 Icon(Icons.account_balance_wallet, color: AppColors.primary),
                 SizedBox(width: 8),
-                Text(
-                  'Tổng quan Ngân sách',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Expanded(
+                  child: Text(
+                    'Tổng quan Ngân sách',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.sync, color: AppColors.primary),
+                  onPressed: _syncWithMainBudget,
+                  tooltip: 'Đồng bộ với hệ thống ngân sách chính',
                 ),
               ],
             ),
@@ -303,6 +310,29 @@ class _BudgetManagementScreenState extends State<BudgetManagementScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _syncWithMainBudget() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Đồng bộ ngân sách với hệ thống chính
+      final success = await _repository.syncBudgetWithItems(widget.projectId);
+      
+      if (success) {
+        _showSuccessSnackBar('Đã đồng bộ ngân sách thành công với hệ thống chính');
+      } else {
+        _showErrorSnackBar('Không thể đồng bộ ngân sách');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Lỗi khi đồng bộ ngân sách: $e');
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   Widget _buildSummaryItem(String label, String value, Color color) {

@@ -27,6 +27,8 @@ import 'package:mission_master/widgets/task_card.dart';
 import 'package:mission_master/widgets/task_tile.dart';
 import 'package:mission_master/widgets/text.dart';
 import 'package:mission_master/widgets/workspace_container.dart';
+import 'package:mission_master/widgets/ai_priority_widget.dart';
+import 'package:mission_master/services/task_priority_ai.dart';
 import 'package:mission_master/bloc/tasks/tasks_bloc.dart' as tasks_bloc;
 import 'package:mission_master/screens/task/task_detail_screen.dart';
 import 'package:table_calendar/table_calendar.dart';
@@ -83,140 +85,68 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Nhiệm vụ của tôi'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Tất cả'),
-            Tab(text: 'Của tôi'),
-            Tab(text: 'Lịch'),
-          ],
-          onTap: (index) {
-            if (index == 0) {
-              context.read<tasks_bloc.TasksBloc>().add(tasks_bloc.LoadTasks());
-            } else if (index == 1) {
-              // Đồng bộ dữ liệu từ Firebase trước khi lọc theo người dùng
-              final tasksBloc = context.read<tasks_bloc.TasksBloc>();
-              tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
-                tasksBloc.add(
-                  tasks_bloc.LoadTasksByPage(
-                    limit: 10,
-                    status: _selectedStatus == 'all' ? null : _selectedStatus,
-                  )
-                );
-              });
-            } else if (index == 2) {
-              // Khi chuyển sang tab Lịch, đảm bảo hiển thị đúng các task của ngày đã chọn
-              final tasksBloc = context.read<tasks_bloc.TasksBloc>();
-              tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
-                tasksBloc.add(tasks_bloc.FilterByDate(date: _selectedDay));
-              });
-            }
-          },
-        ),
-        actions: [
-          // Nút làm mới để đồng bộ dữ liệu từ Firebase
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Làm mới dữ liệu',
-            onPressed: () {
-              // Hiển thị thông báo đang làm mới
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đang đồng bộ dữ liệu...'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-              
-              // Đồng bộ dữ liệu từ Firebase
-              final tasksBloc = context.read<tasks_bloc.TasksBloc>();
-              tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
-                // Sau khi đồng bộ, tải lại dữ liệu phù hợp với tab hiện tại
-                final currentIndex = _tabController.index;
-                if (currentIndex == 0) {
-                  tasksBloc.add(tasks_bloc.LoadTasks());
-                } else if (currentIndex == 1) {
+    return Column(
+      children: [
+        // TabBar sẽ được hiển thị dưới AppBar của MainScreen
+        Container(
+          color: AppColors.primaryColor,
+          child: TabBar(
+                      controller: _tabController,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            tabs: const [
+              Tab(text: 'Nhiệm vụ của tôi'),
+              Tab(text: 'Theo dự án'),
+              Tab(text: 'Lịch'),
+            ],
+            onTap: (index) {
+              if (index == 0) {
+                // Tab "Tất cả" - CHỈ HIỂN THỊ TASK ĐƯỢC GIAO CHO USER HIỆN TẠI
+                final tasksBloc = context.read<tasks_bloc.TasksBloc>();
+                tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
                   tasksBloc.add(
-                    tasks_bloc.FilterByAssignedUser(userEmail: Auth.auth.currentUser!.email!)
+                    tasks_bloc.LoadTasksByPage(
+                      limit: 10,
+                      status: _selectedStatus == 'all' ? null : _selectedStatus,
+                    )
                   );
-                } else if (currentIndex == 2) {
+                });
+              } else if (index == 1) {
+                // Tab "Theo dự án" - Có thể filter theo specific project
+                final tasksBloc = context.read<tasks_bloc.TasksBloc>();
+                tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
+                  tasksBloc.add(
+                    tasks_bloc.LoadTasksByPage(
+                      limit: 10,
+                      status: _selectedStatus == 'all' ? null : _selectedStatus,
+                    )
+                  );
+                });
+              } else if (index == 2) {
+                // Khi chuyển sang tab Lịch, đảm bảo hiển thị đúng các task của ngày đã chọn
+                final tasksBloc = context.read<tasks_bloc.TasksBloc>();
+                tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
                   tasksBloc.add(tasks_bloc.FilterByDate(date: _selectedDay));
-            }
-            
-                // Hiển thị thông báo đã làm mới
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã đồng bộ dữ liệu thành công'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }).catchError((error) {
-                // Hiển thị thông báo lỗi
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Lỗi đồng bộ dữ liệu: $error'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-              });
-            },
-          ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            onSelected: (value) {
-              if (value == 'filter') {
-                // Hiển thị dialog lọc
-                _showFilterDialog();
-              } else if (value == 'clear_cache') {
-                // Xóa dữ liệu cục bộ và đồng bộ lại
-                _clearLocalCache();
+                });
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'filter',
-                child: Row(
-                  children: [
-                    Icon(Icons.filter_list, size: 20),
-                    SizedBox(width: 8),
-                    Text('Lọc nhiệm vụ'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'clear_cache',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_sweep, size: 20, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Xóa dữ liệu cục bộ', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
           ),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildTaskListView(),
-          _buildAssignedTasksView(),
-          _buildCalendarView(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: AppColors.accentColor,
-        foregroundColor: AppColors.white,
-        onPressed: () {
-          // Navigate to add task screen
-          Navigator.pushNamed(context, AppRoutes.addTask);
-        },
-        child: const Icon(Icons.add),
-      ),
+        ),
+        // Body content
+        Expanded(
+          child: Container(
+            color: AppColors.background,
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTaskListView(),
+                _buildAssignedTasksView(),
+                _buildCalendarView(),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
   
@@ -225,11 +155,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _selectedStatus = status;
     });
     
-    if (status == 'all') {
-      context.read<tasks_bloc.TasksBloc>().add(tasks_bloc.LoadTasks());
-    } else {
-      context.read<tasks_bloc.TasksBloc>().add(tasks_bloc.FilterByStatus(status: status));
-    }
+    // Sử dụng LoadTasksByPage thay vì LoadTasks để đảm bảo chỉ lấy task của user hiện tại
+    final tasksBloc = context.read<tasks_bloc.TasksBloc>();
+    tasksBloc.taskRepository.syncTasksFromFirebase().then((_) {
+      tasksBloc.add(
+        tasks_bloc.LoadTasksByPage(
+          limit: 10,
+          status: status == 'all' ? null : status,
+        )
+      );
+    });
   }
   
   List<Task> _getTasksForSelectedDay(List<Task> allTasks) {
@@ -314,7 +249,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             return _buildEmptyState();
           }
           
-          return _buildTaskList(tasks);
+          // Tích hợp AI Top Priority
+          return _buildTaskListWithAI(tasks);
         } else if (state is tasks_bloc.TasksError) {
           return Center(child: Text('Lỗi: ${state.message}'));
         }
@@ -325,8 +261,105 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _buildTaskListWithAI(List<Task> tasks) {
+    // Lấy top priority tasks bằng AI
+    final topPriorityTasks = TaskPriorityAI.getTopPriorityTasks(tasks, limit: 3);
+    
+    return Column(
+      children: [
+        // AI Top Priority Section
+        if (topPriorityTasks.isNotEmpty)
+          AITopTasksWidget(
+            tasks: topPriorityTasks,
+            onSeeAll: () {
+              // Navigate to full AI prioritized list
+              _showAIPrioritizedTasks(tasks);
+            },
+          ),
+        
+        // Regular task list
+        Expanded(
+          child: _buildTaskList(tasks),
+        ),
+      ],
+    );
+  }
+
+  void _showAIPrioritizedTasks(List<Task> allTasks) {
+    final prioritizedTasks = TaskPriorityAI.sortTasksBySmartPriority(allTasks);
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.8,
+        maxChildSize: 0.95,
+        minChildSize: 0.5,
+        builder: (context, scrollController) {
+          return Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.psychology, color: Colors.purple),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '🤖 AI sắp xếp tất cả nhiệm vụ',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: prioritizedTasks.length,
+                    itemBuilder: (context, index) {
+                      final task = prioritizedTasks[index];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          title: Text(task.title),
+                          subtitle: Text('📅 ${task.deadlineDate}'),
+                          trailing: AIPriorityWidget(
+                            task: task,
+                            compact: true,
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TaskDetailScreen(task: task),
+                              ),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildAssignedTasksView() {
-    // Sử dụng BlocBuilder để hiển thị các task được gán cho người dùng hiện tại
+    // Tab "Theo dự án" - có thể thêm dropdown để filter theo specific project
     return BlocBuilder<tasks_bloc.TasksBloc, tasks_bloc.TasksState>(
       builder: (context, state) {
         if (state is tasks_bloc.TasksLoading) {

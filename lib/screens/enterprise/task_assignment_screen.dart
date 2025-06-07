@@ -5,6 +5,7 @@ import 'package:mission_master/data/models/resource_model.dart';
 import 'package:mission_master/data/repositories/task_repository.dart';
 import 'package:mission_master/data/repositories/resource_repository.dart';
 import 'package:mission_master/data/providers/task_data_provider.dart';
+import 'package:mission_master/data/services/user_validation_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
@@ -150,12 +151,28 @@ class _TaskAssignmentScreenState extends State<TaskAssignmentScreen> {
     }
   }
   
-  void _addMember(String email) {
+  void _addMember(String email) async {
     if (!_selectedMembers.contains(email)) {
+      // Kiểm tra email có trong dự án không
+      bool isProjectMember = false;
+      try {
+        isProjectMember = await UserValidationService.isUserInProject(email, widget.projectId) ||
+                         await UserValidationService.isUserInEnterpriseProject(email, widget.projectId);
+      } catch (e) {
+        print('Lỗi khi kiểm tra thành viên: $e');
+      }
+      
+      if (!isProjectMember) {
+        _showErrorSnackBar('Email "$email" không phải thành viên của dự án này.\nChỉ có thể giao việc cho thành viên trong dự án.');
+        return;
+      }
+      
       setState(() {
         _selectedMembers.add(email);
       });
       _memberController.clear();
+    } else {
+      _showErrorSnackBar('Thành viên này đã được chọn');
     }
   }
   

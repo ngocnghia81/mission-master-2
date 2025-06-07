@@ -51,8 +51,11 @@ class _EnterpriseDashboardScreenState extends State<EnterpriseDashboardScreen> {
     });
     
     try {
-      final tasks = await _taskRepository.getTasksByProject(widget.projectId);
+      final tasks = await _taskRepository.getTasksByProjectId(widget.projectId);
       final resources = await _resourceRepository.getProjectResources(widget.projectId);
+      
+      // Đồng bộ ngân sách trước khi lấy dữ liệu
+      await _resourceRepository.syncBudgetWithItems(widget.projectId);
       final budget = await _resourceRepository.getProjectBudget(widget.projectId);
       
       setState(() {

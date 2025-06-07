@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'package:mission_master/data/models/task_model.dart';
 import 'package:mission_master/data/providers/task_data_provider.dart';
+import 'package:mission_master/services/task_priority_ai.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mission_master/data/Authentications/google_signin.dart';
@@ -145,6 +146,51 @@ class TaskRepository {
     }
   }
 
+  /// 🤖 AI: Lấy tasks đã được sắp xếp theo độ ưu tiên thông minh
+  Future<List<Task>> getTasksWithSmartPriority({String? userEmail}) async {
+    try {
+      List<Task> tasks;
+      
+      if (userEmail != null) {
+        tasks = await getTasksByAssignedUser(userEmail);
+      } else {
+        tasks = await getTasks();
+      }
+      
+      // Sử dụng AI để sắp xếp tasks
+      final prioritizedTasks = TaskPriorityAI.sortTasksBySmartPriority(tasks);
+      
+      print('🤖 AI sắp xếp ${prioritizedTasks.length} tasks theo độ ưu tiên thông minh');
+      
+      return prioritizedTasks;
+    } catch (e) {
+      print('Error getting smart prioritized tasks: $e');
+      return await getTasks();
+    }
+  }
+
+  /// 🔥 AI: Lấy top tasks ưu tiên cao nhất
+  Future<List<Task>> getTopPriorityTasks({String? userEmail, int limit = 5}) async {
+    try {
+      List<Task> tasks;
+      
+      if (userEmail != null) {
+        tasks = await getTasksByAssignedUser(userEmail);
+      } else {
+        tasks = await getTasks();
+      }
+      
+      final topTasks = TaskPriorityAI.getTopPriorityTasks(tasks, limit: limit);
+      
+      print('🔥 AI tìm ${topTasks.length} tasks ưu tiên cao nhất');
+      
+      return topTasks;
+    } catch (e) {
+      print('Error getting top priority tasks: $e');
+      return [];
+    }
+  }
+
   Task _convertToTask(String id, Map<String, dynamic> data) {
     // In ra dữ liệu để debug
     print('Converting task data: $id');
@@ -250,11 +296,12 @@ class TaskRepository {
           continue;
         }
         
-        // Tạo query để lấy tasks, áp dụng đồng bộ gia tăng nếu có thời gian đồng bộ cuối cùng
+        // Tạo query để lấy tasks - CHỈ LẤY TASK ĐƯỢC GIAO CHO USER HIỆN TẠI
         Query query = _firestore
             .collection('Tasks')
             .doc(projectId)
-            .collection('projectTasks');
+            .collection('projectTasks')
+            .where('Members', arrayContains: currentUserEmail);
             
         if (lastSync != null) {
           // Chỉ lấy các task đã được cập nhật sau lần đồng bộ cuối cùng

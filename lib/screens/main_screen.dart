@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mission_master/bloc/bottomNavBarBloc/bloc.dart';
 import 'package:mission_master/bloc/bottomNavBarBloc/events.dart';
 import 'package:mission_master/bloc/bottomNavBarBloc/states.dart';
@@ -66,6 +67,49 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // Đánh dấu tất cả thông báo đã đọc
+  Future<void> _markAllNotificationsAsRead() async {
+    try {
+      // Lấy tất cả thông báo chưa đọc
+      final snapshot = await FirebaseFirestore.instance
+          .collection('Notifications')
+          .where('receiveTo', isEqualTo: Auth.auth.currentUser!.email)
+          .where('isRead', isEqualTo: false)
+          .get();
+      
+      // Cập nhật từng thông báo
+      final batch = FirebaseFirestore.instance.batch();
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Đã đánh dấu tất cả thông báo là đã đọc'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Lỗi: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Làm mới thông báo
+  void _refreshNotifications() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Đã làm mới thông báo'),
+        duration: Duration(seconds: 1),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -82,6 +126,13 @@ class _MainScreenState extends State<MainScreen> {
       key: _scaffoldKey,
       drawer: _buildDrawer(context, themeProvider),
       appBar: AppBar(
+        automaticallyImplyLeading: false, // Ẩn nút quay lại
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: Icon(Icons.menu),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: BlocBuilder<NavBarBloc, NavBarStates>(
           builder: (context, state) {
             if (state is pageNavigate) {
@@ -93,10 +144,35 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: AppColors.primaryColor,
         foregroundColor: AppColors.white,
         actions: [
-          IconButton(
-            icon: Icon(Icons.notifications),
-            onPressed: () {
-              BlocProvider.of<NavBarBloc>(context).add(currentPage(index: 3));
+          BlocBuilder<NavBarBloc, NavBarStates>(
+            builder: (context, state) {
+              // Hiển thị actions khác nhau tùy vào tab hiện tại
+              if (state is pageNavigate && state.index == 3) {
+                // Tab thông báo - hiển thị actions đặc biệt
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(Icons.done_all),
+                      tooltip: 'Đánh dấu tất cả đã đọc',
+                      onPressed: () => _markAllNotificationsAsRead(),
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.refresh),
+                      tooltip: 'Làm mới',
+                      onPressed: () => _refreshNotifications(),
+                    ),
+                  ],
+                );
+              } else {
+                // Các tab khác - hiển thị icon thông báo
+                return IconButton(
+                  icon: Icon(Icons.notifications),
+                  onPressed: () {
+                    BlocProvider.of<NavBarBloc>(context).add(currentPage(index: 3));
+                  },
+                );
+              }
             },
           ),
         ],

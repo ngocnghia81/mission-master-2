@@ -489,6 +489,9 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
     final bool isCreator = widget.task.members.isNotEmpty && 
                           Auth.auth.currentUser != null && 
                           Auth.auth.currentUser!.email == widget.task.members.first;
+    
+    // CHỈ NGƯỜI ĐƯỢC GIAO TASK MỚI CÓ THỂ CẬP NHẬT TRẠNG THÁI
+    final bool canUpdateStatus = isAssigned;
 
     return Card(
       elevation: 2,
@@ -556,8 +559,8 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
               ],
             ),
             
-            // Chỉ hiển thị nút cập nhật trạng thái nếu người dùng được giao task hoặc là người tạo task
-            if (isAssigned || isCreator) ...[
+            // CHỈ NGƯỜI ĐƯỢC GIAO TASK MỚI CÓ THỂ CẬP NHẬT TRẠNG THÁI (không bao gồm người tạo)
+            if (canUpdateStatus) ...[
               SizedBox(height: 16),
               Text(
                 'Cập nhật trạng thái:',
@@ -633,7 +636,7 @@ class _TaskDetailScreenState extends State<TaskDetailScreen> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Chỉ người được giao task mới có thể cập nhật trạng thái.',
+                        'Chỉ người được giao công việc mới có thể cập nhật trạng thái.\nBạn không có quyền cập nhật task này.',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey.shade700,

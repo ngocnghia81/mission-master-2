@@ -67,11 +67,32 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
     });
     
     try {
+      print('DEBUG: Loading data for projectId: ${widget.projectId}');
+      
       // Tải dữ liệu cơ bản
       final reports = await _reportRepository.getProjectReports(widget.projectId);
-      final tasks = await _taskRepository.getTasksByProject(widget.projectId);
+      final tasks = await _taskRepository.getTasksByProjectId(widget.projectId);
       final resources = await _resourceRepository.getProjectResources(widget.projectId);
+      
+      print('DEBUG: Loaded ${reports.length} reports');
+      print('DEBUG: Loaded ${tasks.length} tasks');
+      print('DEBUG: Loaded ${resources.length} resources');
+      
+      // Debug hiển thị thông tin tasks
+      if (tasks.isNotEmpty) {
+        print('DEBUG: First task: ${tasks.first.title}, status: ${tasks.first.status}');
+        for (var task in tasks) {
+          print('DEBUG: Task "${task.title}" - Status: ${task.status}');
+        }
+      } else {
+        print('DEBUG: No tasks found for project ${widget.projectId}');
+      }
+      
+      // Đồng bộ ngân sách trước khi lấy dữ liệu
+      await _resourceRepository.syncBudgetWithItems(widget.projectId);
       final budget = await _resourceRepository.getProjectBudget(widget.projectId);
+      
+      print('DEBUG: Budget total: ${budget?.totalBudget}');
       
       setState(() {
         _reports = reports;
@@ -87,6 +108,7 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
         _isLoading = false;
       });
     } catch (e) {
+      print('DEBUG: Error loading data: $e');
       setState(() {
         _isLoading = false;
       });
@@ -115,6 +137,8 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
   }
   
   ProjectStatusReport _generateProjectStatusReport() {
+    print('DEBUG: Generating project status report with ${_tasks.length} tasks');
+    
     int totalTasks = _tasks.length;
     int completedTasks = _tasks.where((task) => task.status == 'completed').length;
     int inProgressTasks = _tasks.where((task) => task.status == 'in_progress').length;
@@ -124,6 +148,8 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
         task.dueDate != null && 
         task.dueDate!.isBefore(DateTime.now())
     ).length;
+    
+    print('DEBUG: Task counts - Total: $totalTasks, Completed: $completedTasks, InProgress: $inProgressTasks, Pending: $pendingTasks, Overdue: $overdueTasks');
     
     double completionPercentage = totalTasks > 0 
         ? (completedTasks / totalTasks) * 100 
@@ -144,6 +170,10 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
     for (var task in _tasks) {
       tasksByPriority[task.priority] = (tasksByPriority[task.priority] ?? 0) + 1;
     }
+    
+    print('DEBUG: Tasks by member: $tasksByMember');
+    print('DEBUG: Tasks by priority: $tasksByPriority');
+    print('DEBUG: Completion percentage: $completionPercentage');
     
     return ProjectStatusReport(
       totalTasks: totalTasks,
@@ -191,7 +221,10 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
   }
   
   BudgetReport _generateBudgetReport() {
+    print('DEBUG: Generating budget report...');
+    
     if (_budget == null) {
+      print('DEBUG: Budget is null, returning empty report');
       return BudgetReport(
         totalBudget: 0,
         allocatedBudget: 0,
@@ -205,7 +238,10 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
       );
     }
     
-    return BudgetReport(
+    print('DEBUG: Budget data - Total: ${_budget!.totalBudget}, Spent: ${_budget!.spentBudget}, Allocated: ${_budget!.allocatedBudget}');
+    print('DEBUG: Budget category allocation: ${_budget!.categoryAllocation}');
+    
+    final report = BudgetReport(
       totalBudget: _budget!.totalBudget,
       allocatedBudget: _budget!.allocatedBudget,
       spentBudget: _budget!.spentBudget,
@@ -218,6 +254,9 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
           ? (_budget!.spentBudget / _budget!.totalBudget) * 100 
           : 0.0,
     );
+    
+    print('DEBUG: Generated budget report - SpendingByCategory: ${report.spendingByCategory}');
+    return report;
   }
   
   PerformanceReport _generatePerformanceReport() {
@@ -375,7 +414,7 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header với nút tạo báo cáo
+          // Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -487,55 +526,83 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
                   const SizedBox(height: 16),
                   SizedBox(
                     height: 200,
-                    child: PieChart(
+                    child: report.totalTasks > 0 ? PieChart(
                       PieChartData(
                         pieTouchData: PieTouchData(enabled: false),
                         borderData: FlBorderData(show: false),
                         sectionsSpace: 2,
                         centerSpaceRadius: 40,
                         sections: [
-                          PieChartSectionData(
-                            color: Colors.green,
-                            value: report.completedTasks.toDouble(),
-                            title: '${report.completedTasks}',
-                            radius: 50,
-                            titleStyle: const TextStyle(
+                          if (report.completedTasks > 0)
+                            PieChartSectionData(
+                              color: Colors.green,
+                              value: report.completedTasks.toDouble(),
+                              title: '${report.completedTasks}',
+                              radius: 50,
+                              titleStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          if (report.inProgressTasks > 0)
+                            PieChartSectionData(
+                              color: Colors.orange,
+                              value: report.inProgressTasks.toDouble(),
+                              title: '${report.inProgressTasks}',
+                              radius: 50,
+                              titleStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          if (report.pendingTasks > 0)
+                            PieChartSectionData(
+                              color: Colors.blue,
+                              value: report.pendingTasks.toDouble(),
+                              title: '${report.pendingTasks}',
+                              radius: 50,
+                              titleStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          if (report.overdueTasks > 0)
+                            PieChartSectionData(
+                              color: Colors.red,
+                              value: report.overdueTasks.toDouble(),
+                              title: '${report.overdueTasks}',
+                              radius: 50,
+                              titleStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ) : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.assessment, size: 64, color: Colors.grey[400]),
+                          SizedBox(height: 16),
+                          Text(
+                            'Không có dữ liệu nhiệm vụ',
+                            style: TextStyle(
                               fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                          PieChartSectionData(
-                            color: Colors.orange,
-                            value: report.inProgressTasks.toDouble(),
-                            title: '${report.inProgressTasks}',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          PieChartSectionData(
-                            color: Colors.blue,
-                            value: report.pendingTasks.toDouble(),
-                            title: '${report.pendingTasks}',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          PieChartSectionData(
-                            color: Colors.red,
-                            value: report.overdueTasks.toDouble(),
-                            title: '${report.overdueTasks}',
-                            radius: 50,
-                            titleStyle: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                          SizedBox(height: 8),
+                          Text(
+                            'Hãy tạo nhiệm vụ mới để xem báo cáo',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[500],
                             ),
                           ),
                         ],
@@ -918,58 +985,112 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
           const SizedBox(height: 20),
           
           // Chi tiêu theo danh mục
-          if (report.spendingByCategory.isNotEmpty)
-            Card(
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Chi tiêu theo danh mục',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 200,
-                      child: PieChart(
-                        PieChartData(
-                          pieTouchData: PieTouchData(enabled: false),
-                          borderData: FlBorderData(show: false),
-                          sectionsSpace: 2,
-                          centerSpaceRadius: 40,
-                          sections: report.spendingByCategory.entries.map((entry) {
-                            return PieChartSectionData(
-                              color: _getCategoryColor(entry.key),
-                              value: entry.value,
-                              title: NumberFormat.compact().format(entry.value),
-                              radius: 50,
-                              titleStyle: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Legend cho danh mục
+          Card(
+            elevation: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Chi tiêu theo danh mục',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 200,
+                    child: report.spendingByCategory.isNotEmpty && 
+                           report.spendingByCategory.values.any((value) => value > 0) 
+                        ? PieChart(
+                            PieChartData(
+                              pieTouchData: PieTouchData(enabled: false),
+                              borderData: FlBorderData(show: false),
+                              sectionsSpace: 2,
+                              centerSpaceRadius: 40,
+                              sections: report.spendingByCategory.entries
+                                  .where((entry) => entry.value > 0)
+                                  .map((entry) {
+                                return PieChartSectionData(
+                                  color: _getCategoryColor(entry.key),
+                                  value: entry.value,
+                                  title: NumberFormat.compact().format(entry.value),
+                                  radius: 50,
+                                  titleStyle: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.pie_chart_outline, size: 64, color: Colors.grey[400]),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Chưa có chi tiêu theo danh mục',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Dữ liệu sẽ hiển thị sau khi có giao dịch ngân sách',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[500],
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Legend cho danh mục
+                  if (report.spendingByCategory.isNotEmpty)
                     Wrap(
                       spacing: 16,
+                      runSpacing: 8,
                       children: report.spendingByCategory.entries.map((entry) {
-                        return _buildLegendItem(
-                          _getResourceTypeLabel(entry.key),
-                          _getCategoryColor(entry.key),
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 16,
+                              height: 16,
+                              decoration: BoxDecoration(
+                                color: _getCategoryColor(entry.key),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _getCategoryDisplayName(entry.key),
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              NumberFormat.compact().format(entry.value),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         );
                       }).toList(),
                     ),
-                  ],
-                ),
+                ],
               ),
             ),
+          ),
         ],
       ),
     );
@@ -1187,11 +1308,47 @@ class _ReportsAnalyticsScreenState extends State<ReportsAnalyticsScreen> with Si
   
   Color _getCategoryColor(String category) {
     switch (category) {
-      case 'human': return Colors.blue;
-      case 'equipment': return Colors.green;
-      case 'material': return Colors.orange;
-      case 'other': return Colors.purple;
-      default: return Colors.grey;
+      case 'human':
+      case 'development':
+        return Colors.blue[600]!;
+      case 'equipment':
+        return Colors.green[600]!;
+      case 'material':
+        return Colors.orange[600]!;
+      case 'design':
+        return Colors.purple[600]!;
+      case 'testing':
+        return Colors.red[600]!;
+      case 'marketing':
+        return Colors.pink[600]!;
+      case 'other':
+        return Colors.grey[600]!;
+      default:
+        // Generate color based on string hash for consistency
+        final hash = category.hashCode;
+        final colors = [
+          Colors.indigo[600]!,
+          Colors.teal[600]!,
+          Colors.amber[600]!,
+          Colors.deepPurple[600]!,
+          Colors.cyan[600]!,
+          Colors.lime[600]!,
+        ];
+        return colors[hash.abs() % colors.length];
+    }
+  }
+
+  String _getCategoryDisplayName(String category) {
+    switch (category) {
+      case 'human': return 'Nhân lực';
+      case 'equipment': return 'Thiết bị';
+      case 'material': return 'Vật liệu';
+      case 'development': return 'Phát triển';
+      case 'design': return 'Thiết kế';
+      case 'testing': return 'Kiểm thử';
+      case 'marketing': return 'Marketing';
+      case 'other': return 'Khác';
+      default: return category.toUpperCase();
     }
   }
 
