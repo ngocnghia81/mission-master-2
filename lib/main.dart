@@ -64,6 +64,7 @@ void main() async {
   
   // Thiết lập các phụ thuộc sau khi Firebase đã được khởi tạo
   setup();
+
   
   // Chạy ứng dụng
   runApp(
@@ -197,6 +198,7 @@ class _MyAppState extends State<MyApp> {
         print('Đang khởi tạo hệ thống thông báo...');
         final notificationService = locator<NotificationServices>();
         await notificationService.initializeNotifications(context);
+
         print('Đã khởi tạo hệ thống thông báo thành công');
       } else {
         print('Chưa đăng nhập, bỏ qua khởi tạo thông báo');
@@ -218,7 +220,8 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemePreference>(context);
-    
+    NotificationServices.setGlobalContext(context);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       themeMode: themeProvider.themeMode,
