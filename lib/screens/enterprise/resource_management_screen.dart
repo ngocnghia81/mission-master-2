@@ -23,6 +23,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
   List<ResourceAllocation> _allocations = [];
   Budget? _budget;
   bool _isLoading = true;
+  bool _showResourceForm = false;
   
   // Controllers cho form tài nguyên
   final _resourceFormKey = GlobalKey<FormState>();
@@ -153,6 +154,20 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
     });
   }
   
+  void _hideResourceForm() {
+    setState(() {
+      _clearResourceForm();
+      _showResourceForm = false;
+    });
+  }
+  
+  void _showNewResourceForm() {
+    setState(() {
+      _clearResourceForm();
+      _showResourceForm = true;
+    });
+  }
+  
   Future<void> _saveResource() async {
     if (!_resourceFormKey.currentState!.validate()) return;
     
@@ -201,7 +216,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
         _showSuccessSnackBar('Cập nhật tài nguyên thành công');
       }
       
-      _clearResourceForm();
+      _hideResourceForm();
       await _loadData();
     } catch (e) {
       setState(() {
@@ -549,7 +564,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
             children: [
               Flexible(
                 child: TextButton(
-                  onPressed: _clearResourceForm,
+                  onPressed: _hideResourceForm,
                   child: const Text('Hủy'),
                 ),
               ),
@@ -818,7 +833,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
                                   IconButton(
                                     icon: const Icon(Icons.add_circle),
                                     color: AppColors.primary,
-                                    onPressed: _clearResourceForm,
+                                    onPressed: _showNewResourceForm,
                                     tooltip: 'Thêm tài nguyên mới',
                                   ),
                                 ],
@@ -862,7 +877,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
                             IconButton(
                               icon: const Icon(Icons.add_circle),
                               color: AppColors.primary,
-                              onPressed: _clearResourceForm,
+                              onPressed: _showNewResourceForm,
                               tooltip: 'Thêm tài nguyên mới',
                             ),
                           ],
@@ -870,11 +885,11 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
                       ),
                       // Danh sách tài nguyên
                       Expanded(
-                        flex: 1,
+                        flex: _showResourceForm ? 1 : 2,
                         child: _buildResourceList(),
                       ),
                       // Form (có thể collapse/expand)
-                      if (_selectedResource != null || _resources.isEmpty)
+                      if (_showResourceForm || _selectedResource != null)
                         Container(
                           height: 300,
                           decoration: BoxDecoration(
@@ -894,7 +909,7 @@ class _ResourceManagementScreenState extends State<ResourceManagementScreen> {
             ),
       floatingActionButton: MediaQuery.of(context).size.width <= 600 
           ? FloatingActionButton(
-              onPressed: _clearResourceForm,
+              onPressed: _showNewResourceForm,
               backgroundColor: AppColors.primary,
               child: const Icon(Icons.add, color: Colors.white),
               tooltip: 'Thêm tài nguyên mới',

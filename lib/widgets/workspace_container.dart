@@ -156,35 +156,72 @@ class WorkSpaceContainer extends StatelessWidget {
               ? FutureBuilder(
                   future: project().getProgress(id: projectId),
                   builder: (context, snapshot) {
-                    return !snapshot.hasData
-                        ? Center(
-                            child: CircularProgressIndicator(),
-                          )
-                        : Container(
-                            width: size.width * 0.3,
-                            alignment: Alignment.center,
-                            margin: EdgeInsets.only(
-                              left: size.width * 0.04,
-                              top: size.height * 0.013,
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    }
+                    
+                    if (snapshot.hasError) {
+                      print("Lỗi khi lấy tiến độ: ${snapshot.error}");
+                      return Container(
+                        width: size.width * 0.3,
+                        alignment: Alignment.center,
+                        margin: EdgeInsets.only(
+                          left: size.width * 0.04,
+                          top: size.height * 0.013,
+                        ),
+                        decoration: ShapeDecoration(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              size.width * 0.03,
                             ),
-                            decoration: ShapeDecoration(
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  size.width * 0.03,
-                                ),
-                              ),
-                              color: Colors.white,
-                            ),
-                            child: text(
-                              title: snapshot.data! * 100 == 100
-                                  ? "Completed"
-                                  : "In Progress",
-                              fontSize: size.width * 0.04,
-                              align: TextAlign.start,
-                              fontWeight: AppFonts.semiBold,
-                              color: AppColors.black,
-                            ),
-                          );
+                          ),
+                          color: Colors.white,
+                        ),
+                        child: text(
+                          title: "Không xác định",
+                          fontSize: size.width * 0.04,
+                          align: TextAlign.start,
+                          fontWeight: AppFonts.semiBold,
+                          color: AppColors.black,
+                        ),
+                      );
+                    }
+                    
+                    final progress = snapshot.data ?? 0.0;
+                    return Container(
+                      width: size.width * 0.3,
+                      alignment: Alignment.center,
+                      margin: EdgeInsets.only(
+                        left: size.width * 0.04,
+                        top: size.height * 0.013,
+                      ),
+                      decoration: ShapeDecoration(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            size.width * 0.03,
+                          ),
+                        ),
+                        color: Colors.white,
+                      ),
+                      child: text(
+                        title: progress * 100 == 100
+                            ? "Completed"
+                            : "In Progress",
+                        fontSize: size.width * 0.04,
+                        align: TextAlign.start,
+                        fontWeight: AppFonts.semiBold,
+                        color: AppColors.black,
+                      ),
+                    );
                   })
               : SizedBox(),
         ],

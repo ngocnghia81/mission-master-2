@@ -37,4 +37,7 @@ class AppColors {
     Color(0xFF00DBDE),
     Color(0xFF5ECBD7),
   ];
+  
+  static const Color enterpriseGradient1 = Color(0xFF6A3093);
+  static const Color enterpriseGradient2 = Color(0xFFA044FF);
 }

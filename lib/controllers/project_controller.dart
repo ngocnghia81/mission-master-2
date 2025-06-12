@@ -10,7 +10,7 @@ class ProjectController extends GetxController {
   // Private constructor
   ProjectController._internal();
   
-  RxInt projectId = 0.obs;
+  RxString projectId = ''.obs;
   RxString projectName = ''.obs;
   RxString projectCreatedBy = ''.obs;
   RxString projectCreationDate = ''.obs;

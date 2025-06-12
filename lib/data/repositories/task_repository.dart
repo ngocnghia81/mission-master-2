@@ -6,6 +6,9 @@ import 'package:mission_master/services/task_priority_ai.dart';
 import 'package:uuid/uuid.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mission_master/data/Authentications/google_signin.dart';
+import 'package:get_it/get_it.dart';
+import 'package:mission_master/notification/notification_services.dart';
+import 'package:mission_master/injection/database.dart';
 
 class TaskRepository {
   final TaskDataProvider taskDataProvider;
@@ -475,7 +478,34 @@ class TaskRepository {
   // Tạo nhiệm vụ mới
   Future<bool> createTask(Task task) async {
     try {
+      // Lưu vào SharedPreferences
       await taskDataProvider.createTask(task);
+      
+      // Lưu vào Firestore
+      final taskData = task.toJson();
+      
+      // Kiểm tra xem đây có phải là enterprise task không
+      if (task.projectId.isNotEmpty) {
+        // Đảm bảo lưu đúng trường Members (viết hoa) cho Firebase
+        await _firestore.collection('EnterpriseTasks').doc(task.id).set({
+          ...taskData,
+          'Members': task.members, // Đảm bảo trường này được lưu với tên 'Members'
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+        
+        print('Đã lưu enterprise task ${task.id} vào Firestore');
+        print('Members: ${task.members}');
+      }
+      
+      // Gửi thông báo đến tất cả thành viên được giao việc
+      final notificationService = locator<NotificationServices>();
+      await notificationService.sendTaskAssignmentNotification(
+        taskName: task.title,
+        projectName: task.projectName,
+        deadline: "${task.deadlineDate} ${task.deadlineTime}",
+        members: task.members,
+      );
+      
       return true;
     } catch (e) {
       print('Lỗi khi tạo nhiệm vụ: $e');
@@ -486,7 +516,40 @@ class TaskRepository {
   // Cập nhật nhiệm vụ
   Future<bool> updateTask(Task task) async {
     try {
+      // Cập nhật trong SharedPreferences
       await taskDataProvider.updateTask(task);
+      
+      // Cập nhật lên Firestore
+      final taskData = task.toJson();
+      
+      // Kiểm tra xem đây có phải là enterprise task không
+      if (task.projectId.isNotEmpty) {
+        // Cập nhật vào collection EnterpriseTasks
+        await _firestore.collection('EnterpriseTasks').doc(task.id).update({
+          ...taskData,
+          'Members': task.members, // Đảm bảo trường này được cập nhật với tên 'Members'
+          'lastModified': FieldValue.serverTimestamp(),
+        });
+        
+        print('Đã cập nhật enterprise task ${task.id} lên Firestore');
+        print('Members: ${task.members}');
+      } else {
+        // Cập nhật task thường
+        await _firestore
+          .collection('Tasks')
+          .doc(task.projectId)
+          .collection('projectTasks')
+          .doc(task.id)
+          .update({
+            'status': task.status,
+            'Members': task.members, // Đảm bảo trường này được cập nhật với tên 'Members'
+            'lastModifiedBy': Auth.auth.currentUser?.email,
+            'lastModifiedAt': FieldValue.serverTimestamp(),
+          });
+          
+        print('Đã cập nhật task thường ${task.id} lên Firestore');
+      }
+      
       return true;
     } catch (e) {
       print('Lỗi khi cập nhật nhiệm vụ: $e');
@@ -502,6 +565,75 @@ class TaskRepository {
     } catch (e) {
       print('Lỗi khi xóa nhiệm vụ: $e');
       return false;
+    }
+  }
+
+  // Lấy nhiệm vụ trực tiếp từ Firebase
+  Future<List<Task>> getEnterpriseTasksFromFirebase({
+    required String projectId,
+    bool onlyCurrentUser = false,
+    String statusFilter = 'all',
+  }) async {
+    try {
+      final String currentUserEmail = Auth.auth.currentUser?.email ?? '';
+      if (currentUserEmail.isEmpty) {
+        print('Không thể tải task: Người dùng chưa đăng nhập');
+        return [];
+      }
+      
+      print('Đang tải enterprise tasks từ Firebase cho dự án: $projectId');
+      print('Chỉ hiển thị nhiệm vụ của người dùng hiện tại: $onlyCurrentUser');
+      print('Lọc theo trạng thái: $statusFilter');
+      print('Email người dùng hiện tại: $currentUserEmail');
+      
+      // Tạo truy vấn cơ bản
+      Query query = _firestore.collection('EnterpriseTasks')
+          .where('projectId', isEqualTo: projectId);
+      
+      // Nếu có bộ lọc trạng thái và không phải 'all'
+      if (statusFilter != 'all') {
+        query = query.where('status', isEqualTo: statusFilter);
+      }
+      
+      // Thực hiện truy vấn
+      final QuerySnapshot taskSnapshot = await query.get();
+      print('Tìm thấy ${taskSnapshot.docs.length} enterprise tasks');
+      
+      // Chuyển đổi kết quả thành danh sách Task
+      List<Task> tasks = [];
+      for (var doc in taskSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        print('Task data: $data');
+        
+        // Kiểm tra xem nhiệm vụ có phải của người dùng hiện tại không
+        List<String> members = [];
+        if (data['Members'] != null) {
+          if (data['Members'] is List) {
+            members = List<String>.from(data['Members']);
+          } else if (data['Members'] is String) {
+            members = [data['Members'] as String];
+          }
+        }
+        
+        print('Task: ${data['taskName']}');
+        print('Members: $members');
+        print('Kiểm tra $currentUserEmail có trong danh sách members không: ${members.contains(currentUserEmail)}');
+        
+        // Nếu đang lọc theo người dùng hiện tại và người dùng không có trong danh sách, bỏ qua
+        if (onlyCurrentUser && !members.contains(currentUserEmail)) {
+          print('Bỏ qua task vì không phải của người dùng hiện tại');
+          continue;
+        }
+        
+        final task = _convertToTask(doc.id, data);
+        tasks.add(task);
+      }
+      
+      print('Tổng số task sau khi lọc: ${tasks.length}');
+      return tasks;
+    } catch (e) {
+      print('Lỗi khi tải enterprise tasks từ Firebase: $e');
+      return [];
     }
   }
 } 

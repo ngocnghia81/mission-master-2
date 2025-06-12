@@ -448,11 +448,14 @@ class Database {
     try {
       print("Đang tính tiến độ cho dự án: $id");
       
+      // Đảm bảo id là một chuỗi
+      String projectId = id.toString();
+      
       // Lấy tổng số task
       AggregateQuerySnapshot allDocs =
           await firestore
               .collection('Tasks')
-              .doc(id.toString())
+              .doc(projectId)
               .collection('projectTasks')
               .count()
               .get();
@@ -466,7 +469,7 @@ class Database {
         AggregateQuerySnapshot completedSnapshot =
             await firestore
                 .collection('Tasks')
-                .doc(id)
+                .doc(projectId)
                 .collection('projectTasks')
                 .where('status', isEqualTo: status)
                 .count()

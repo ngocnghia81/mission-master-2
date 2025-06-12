@@ -28,4 +28,7 @@ class AppRoutes {
   static const String taskAssignment = '/taskAssignment';
   static const String resourceAllocation = '/resource_allocation';
   static const String budgetManagement = '/budget_management';
+  
+  // AI routes
+  static const String aiTest = '/ai_test';
 }

@@ -10,6 +10,7 @@ import 'package:mission_master/data/models/task_model.dart';
 import 'package:mission_master/routes/routes.dart';
 import 'package:mission_master/widgets/task_card.dart';
 import 'package:mission_master/widgets/text.dart';
+import 'package:mission_master/widgets/team_mood_widget.dart';
 import 'package:mission_master/screens/statistics/project_statistics_screen.dart';
 import 'package:mission_master/screens/task/task_detail_screen.dart';
 import 'package:mission_master/screens/workspace/gantt_chart_screen.dart';
@@ -322,6 +323,12 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
                 color: AppColors.grey,
                 align: TextAlign.start,
               ),
+              
+              // 🤖 AI Team Mood Analysis
+              TeamMoodWidget(
+                projectId: projectController.projectId.string,
+                projectName: projectController.projectName.string,
+              ),
               Padding(
                 padding: EdgeInsets.symmetric(
                   vertical: height * 0.01,
@@ -383,15 +390,21 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
               SizedBox(
                 height: height * 0.5,
                 child: StreamBuilder(
-                    stream: FirebaseFirestore.instance
-                        .collection('Tasks')
-                        .doc(projectController.projectId.string)
-                        .collection('projectTasks')
-                        .snapshots(),
+                    stream: projectController.projectId.string.isNotEmpty
+                        ? FirebaseFirestore.instance
+                            .collection('Tasks')
+                            .doc(projectController.projectId.string)
+                            .collection('projectTasks')
+                            .snapshots()
+                        : const Stream<QuerySnapshot>.empty(),
                     builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const Center(
-                          child: CircularProgressIndicator(),
+                      if (!snapshot.hasData || projectController.projectId.string.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'Không có dữ liệu nhiệm vụ hoặc ID dự án không hợp lệ',
+                            style: TextStyle(color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
                         );
                       } else {
                         final docs = snapshot.data!.docs;
@@ -680,18 +693,30 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
                                                       Navigator.of(context).pop();
                                                     } else {
                                                       Navigator.of(context).pop();
-                                                      Utils.showtoast(
-                                                          ViLabels.taskHasBeenDeleted);
-                                                      await FirebaseFirestore
-                                                          .instance
-                                                          .collection("Tasks")
-                                                          .doc(projectController
-                                                              .projectId.value
-                                                              .toString())
-                                                          .collection(
-                                                              "projectTasks")
-                                                          .doc(snap.id)
-                                                          .delete();
+                                                      
+                                                      // Kiểm tra projectId trước khi xóa
+                                                      if (projectController.projectId.value.toString().isEmpty) {
+                                                        Utils.showtoast('Không thể xóa: ID dự án không hợp lệ');
+                                                        return;
+                                                      }
+                                                      
+                                                      try {
+                                                        Utils.showtoast(
+                                                            ViLabels.taskHasBeenDeleted);
+                                                        await FirebaseFirestore
+                                                            .instance
+                                                            .collection("Tasks")
+                                                            .doc(projectController
+                                                                .projectId.value
+                                                                .toString())
+                                                            .collection(
+                                                                "projectTasks")
+                                                            .doc(snap.id)
+                                                            .delete();
+                                                      } catch (e) {
+                                                        print('Lỗi khi xóa nhiệm vụ: $e');
+                                                        Utils.showtoast('Không thể xóa nhiệm vụ: $e');
+                                                      }
                                                     }
                                                   },
                                                   child: text(
@@ -908,19 +933,32 @@ class _WorkspaceDetailState extends State<WorkspaceDetail> {
                 backgroundColor: AppColors.workspaceGradientColor1[1],
               ),
               onPressed: () async {
-                // Cập nhật trạng thái task trong Firestore
-                await FirebaseFirestore.instance
-                    .collection("Tasks")
-                    .doc(projectController.projectId.string)
-                    .collection("projectTasks")
-                    .doc(snap.id)
-                    .update({'status': selectedStatus});
+                // Kiểm tra projectId trước khi cập nhật
+                if (projectController.projectId.string.isEmpty) {
+                  Navigator.of(context).pop();
+                  Utils.showtoast('Không thể cập nhật: ID dự án không hợp lệ');
+                  return;
+                }
                 
-                // Đóng dialog
-                Navigator.of(context).pop();
-                
-                // Hiển thị thông báo
-                Utils.showtoast(ViLabels.statusUpdated);
+                try {
+                  // Cập nhật trạng thái task trong Firestore
+                  await FirebaseFirestore.instance
+                      .collection("Tasks")
+                      .doc(projectController.projectId.string)
+                      .collection("projectTasks")
+                      .doc(snap.id)
+                      .update({'status': selectedStatus});
+                  
+                  // Đóng dialog
+                  Navigator.of(context).pop();
+                  
+                  // Hiển thị thông báo
+                  Utils.showtoast(ViLabels.statusUpdated);
+                } catch (e) {
+                  print('Lỗi khi cập nhật trạng thái: $e');
+                  Navigator.of(context).pop();
+                  Utils.showtoast('Không thể cập nhật trạng thái: $e');
+                }
               },
               child: text(
                 title: ViLabels.save,

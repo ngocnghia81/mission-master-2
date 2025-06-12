@@ -20,6 +20,7 @@ import 'package:mission_master/screens/home_screen.dart';
 import 'package:mission_master/screens/notification/notification.dart';
 import 'package:mission_master/screens/Signup-in/user.dart';
 import 'package:mission_master/screens/workspace/all_workspace.dart';
+import 'package:mission_master/screens/ai_test_screen.dart';
 import 'package:mission_master/widgets/text.dart';
 import 'package:provider/provider.dart';
 
@@ -395,6 +396,33 @@ class _MainScreenState extends State<MainScreen> {
                 SnackBar(content: Text('Vui lòng chọn dự án trước'))
               );
             },
+          ),
+          Divider(),
+          Padding(
+            padding: EdgeInsets.only(left: 16, top: 8, bottom: 8),
+            child: Text(
+              '🤖 AI Features',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue[600],
+              ),
+            ),
+          ),
+          _buildDrawerItem(
+            context,
+            Icons.psychology,
+            '🧪 AI Sentiment Test',
+            () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => AITestScreen(),
+                ),
+              );
+            },
+            color: Colors.blue,
           ),
           Divider(),
           SwitchListTile(
