@@ -562,15 +562,33 @@ class Database {
     required String title,
     required String body,
   }) async {
-    DateTime today = DateTime.now();
-    await firestore.collection('Notifications').doc().set({
-      'title': title,
-      'body': body,
-      'receiveDate': "${today.day}/${today.month}/${today.year}",
-      'receiveTo': Auth.auth.currentUser!.email, // Sử dụng email thay vì uid
-      'isRead': false, // Thêm trường isRead mặc định là false
-      'timestamp': FieldValue.serverTimestamp(), // Thêm timestamp để sắp xếp chính xác hơn
-    });
+    try {
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      if (currentUserEmail == null) {
+        print('Không thể lưu thông báo: Người dùng chưa đăng nhập');
+        return;
+      }
+      
+      print('Đang lưu thông báo cho: $currentUserEmail');
+      print('Tiêu đề: $title');
+      print('Nội dung: $body');
+      
+      DateTime today = DateTime.now();
+      String notificationId = 'notif_${DateTime.now().millisecondsSinceEpoch}';
+      
+      await firestore.collection('Notifications').doc(notificationId).set({
+        'title': title,
+        'body': body,
+        'receiveDate': "${today.day}/${today.month}/${today.year}",
+        'receiveTo': currentUserEmail, 
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      
+      print('Đã lưu thông báo thành công với ID: $notificationId');
+    } catch (e) {
+      print('Lỗi khi lưu thông báo: $e');
+    }
   }
 
   Future<bool> addComments({

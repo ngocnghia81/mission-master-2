@@ -250,28 +250,71 @@ class NotificationServices {
     required String deadline,
     required List<String> members,
   }) async {
-    // Lưu thông báo vào Firestore cho mỗi thành viên
-    DateTime today = DateTime.now();
-    String currentDate = "${today.day}/${today.month}/${today.year}";
-    
-    for (String member in members) {
-      // Lưu thông báo vào Firestore
-      await Database.firestore.collection('Notifications').doc().set({
-        'title': 'Công việc mới trong $projectName',
-        'body': 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline',
-        'receiveDate': currentDate,
-        'receiveTo': member,
-        'isRead': false,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+    try {
+      // Kiểm tra email người dùng hiện tại
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      print('Đang gửi thông báo cho nhiệm vụ: $taskName');
+      print('Dự án: $projectName');
+      print('Deadline: $deadline');
+      print('Danh sách thành viên: $members');
+      print('Email người dùng hiện tại: $currentUserEmail');
       
-      // Hiển thị thông báo cục bộ nếu người dùng là người giao việc
-      if (Auth.auth.currentUser?.email == member) {
-        await showLocalNotification(
+      // Lưu thông báo vào Firestore cho mỗi thành viên
+      DateTime today = DateTime.now();
+      String currentDate = "${today.day}/${today.month}/${today.year}";
+      
+      // Danh sách email đã chuẩn hóa để gửi thông báo FCM
+      List<String> normalizedEmails = [];
+      
+      for (String member in members) {
+        print('Đang tạo thông báo cho thành viên: $member');
+        
+        // Đảm bảo email được chuẩn hóa (viết thường, loại bỏ khoảng trắng)
+        String normalizedEmail = member.trim().toLowerCase();
+        normalizedEmails.add(normalizedEmail);
+        
+        try {
+          // Lưu thông báo vào Firestore
+          await Database.firestore.collection('Notifications').doc().set({
+            'title': 'Công việc mới trong $projectName',
+            'body': 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline',
+            'receiveDate': currentDate,
+            'receiveTo': normalizedEmail,
+            'isRead': false,
+            'timestamp': FieldValue.serverTimestamp(),
+            'taskName': taskName,
+            'projectName': projectName,
+            'deadline': deadline,
+          });
+          
+          print('Đã lưu thông báo cho: $normalizedEmail');
+          
+          // Hiển thị thông báo cục bộ nếu người dùng là người được giao việc
+          if (currentUserEmail != null && currentUserEmail.trim().toLowerCase() == normalizedEmail) {
+            print('Hiển thị thông báo cục bộ cho người dùng hiện tại: $currentUserEmail');
+            await showLocalNotification(
+              title: 'Công việc mới trong $projectName',
+              body: 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline',
+            );
+          }
+        } catch (e) {
+          print('Lỗi khi tạo thông báo cho $normalizedEmail: $e');
+        }
+      }
+      
+      // Gửi thông báo FCM đến tất cả người dùng
+      if (normalizedEmails.isNotEmpty) {
+        print('Gửi thông báo FCM đến tất cả thành viên...');
+        await sendPushNotificationToUsers(
           title: 'Công việc mới trong $projectName',
           body: 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline',
+          userEmails: normalizedEmails,
         );
       }
+      
+      print('Đã gửi tất cả thông báo nhiệm vụ thành công');
+    } catch (e) {
+      print('Lỗi khi gửi thông báo nhiệm vụ: $e');
     }
   }
 
@@ -301,39 +344,49 @@ class NotificationServices {
     required String title,
     required String body,
   }) async {
-    // Tạo chi tiết thông báo Android
-    AndroidNotificationDetails androidNotificationDetails =
-        AndroidNotificationDetails(
-      channel.id,
-      channel.name,
-      channelDescription: channel.description,
-      importance: Importance.max,
-      priority: Priority.high,
-      ticker: 'ticker',
-      icon: '@mipmap/ic_launcher',
-    );
-    
-    // Chi tiết thông báo iOS
-    const DarwinNotificationDetails darwinNotificationDetails =
-        DarwinNotificationDetails(
-            presentAlert: true, presentBadge: true, presentSound: true);
-    
-    // Kết hợp cả hai nền tảng
-    NotificationDetails notificationDetails = NotificationDetails(
-        android: androidNotificationDetails, iOS: darwinNotificationDetails);
-    
-    // Hiển thị thông báo với ID ngẫu nhiên
-    int notificationId = Random.secure().nextInt(100000);
-    await flutterLocalNotificationsPlugin.show(
-      notificationId,
-      title,
-      body,
-      notificationDetails,
-      payload: json.encode({'title': title, 'body': body}),
-    );
-    
-    // Lưu thông báo vào Firestore
-    await project().saveNotifications(title: title, body: body);
+    try {
+      print('Đang hiển thị thông báo cục bộ: $title');
+      print('Nội dung: $body');
+      
+      // Tạo chi tiết thông báo Android
+      AndroidNotificationDetails androidNotificationDetails =
+          AndroidNotificationDetails(
+        channel.id,
+        channel.name,
+        channelDescription: channel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        ticker: 'ticker',
+        icon: '@mipmap/ic_launcher',
+      );
+      
+      // Chi tiết thông báo iOS
+      const DarwinNotificationDetails darwinNotificationDetails =
+          DarwinNotificationDetails(
+              presentAlert: true, presentBadge: true, presentSound: true);
+      
+      // Kết hợp cả hai nền tảng
+      NotificationDetails notificationDetails = NotificationDetails(
+          android: androidNotificationDetails, iOS: darwinNotificationDetails);
+      
+      // Hiển thị thông báo với ID ngẫu nhiên
+      int notificationId = Random.secure().nextInt(100000);
+      await flutterLocalNotificationsPlugin.show(
+        notificationId,
+        title,
+        body,
+        notificationDetails,
+        payload: json.encode({'title': title, 'body': body}),
+      );
+      
+      print('Đã hiển thị thông báo cục bộ với ID: $notificationId');
+      
+      // Lưu thông báo vào Firestore
+      await project().saveNotifications(title: title, body: body);
+      print('Đã lưu thông báo vào Firestore');
+    } catch (e) {
+      print('Lỗi khi hiển thị thông báo cục bộ: $e');
+    }
   }
 
   // Sửa các thông báo thiếu trường isRead và timestamp
@@ -401,5 +454,46 @@ class NotificationServices {
     }
   }
 
+  // Gửi thông báo FCM đến người dùng cụ thể
+  Future<void> sendPushNotificationToUsers({
+    required String title,
+    required String body,
+    required List<String> userEmails,
+  }) async {
+    try {
+      print('Đang gửi thông báo FCM đến: $userEmails');
+      print('Tiêu đề: $title');
+      print('Nội dung: $body');
 
+      // Chuyển đổi email thành các chủ đề FCM (topic)
+      for (String email in userEmails) {
+        // Chuẩn hóa email
+        String normalizedEmail = email.trim().toLowerCase();
+        // Chuyển đổi email thành topic FCM
+        String topicName = normalizedEmail.replaceAll(RegExp(r'[@.]'), '_');
+        
+        print('Gửi thông báo đến topic: $topicName');
+        
+        // Gửi thông báo đến chủ đề tương ứng với email
+        try {
+          // Không gửi thông báo trực tiếp từ client, thay vào đó lưu vào Firestore
+          // để cloud function có thể xử lý và gửi
+          await FirebaseFirestore.instance.collection('FCMNotifications').doc().set({
+            'title': title,
+            'body': body,
+            'topic': topicName,
+            'timestamp': FieldValue.serverTimestamp(),
+            'sentBy': Auth.auth.currentUser?.email ?? 'unknown',
+            'processed': false, // Trường này để đánh dấu thông báo đã được xử lý hay chưa
+          });
+          
+          print('Đã lưu thông báo FCM để gửi đến: $topicName');
+        } catch (e) {
+          print('Lỗi khi gửi thông báo FCM đến $topicName: $e');
+        }
+      }
+    } catch (e) {
+      print('Lỗi khi gửi thông báo FCM: $e');
+    }
+  }
 }

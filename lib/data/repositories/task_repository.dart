@@ -478,33 +478,54 @@ class TaskRepository {
   // Tạo nhiệm vụ mới
   Future<bool> createTask(Task task) async {
     try {
+      print('Bắt đầu tạo nhiệm vụ mới: ${task.title}');
+      print('ID Dự án: ${task.projectId}');
+      print('Loại nhiệm vụ: ${task.projectId.isNotEmpty ? "Enterprise" : "Thường"}');
+      print('Thành viên được giao: ${task.members}');
+      
       // Lưu vào SharedPreferences
       await taskDataProvider.createTask(task);
+      print('Đã lưu nhiệm vụ vào SharedPreferences');
       
       // Lưu vào Firestore
       final taskData = task.toJson();
       
       // Kiểm tra xem đây có phải là enterprise task không
       if (task.projectId.isNotEmpty) {
-        // Đảm bảo lưu đúng trường Members (viết hoa) cho Firebase
-        await _firestore.collection('EnterpriseTasks').doc(task.id).set({
-          ...taskData,
-          'Members': task.members, // Đảm bảo trường này được lưu với tên 'Members'
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-        
-        print('Đã lưu enterprise task ${task.id} vào Firestore');
-        print('Members: ${task.members}');
+        print('Đang lưu enterprise task vào Firestore...');
+        try {
+          // Đảm bảo lưu đúng trường Members (viết hoa) cho Firebase
+          await _firestore.collection('EnterpriseTasks').doc(task.id).set({
+            ...taskData,
+            'Members': task.members, // Đảm bảo trường này được lưu với tên 'Members'
+            'timestamp': FieldValue.serverTimestamp(),
+          });
+          
+          print('Đã lưu enterprise task ${task.id} vào Firestore');
+          print('Members: ${task.members}');
+        } catch (e) {
+          print('Lỗi khi lưu enterprise task vào Firestore: $e');
+          throw e; // Re-throw để xử lý ở ngoài
+        }
+      } else {
+        print('Đây là nhiệm vụ thường, không lưu vào EnterpriseTasks');
       }
       
       // Gửi thông báo đến tất cả thành viên được giao việc
-      final notificationService = locator<NotificationServices>();
-      await notificationService.sendTaskAssignmentNotification(
-        taskName: task.title,
-        projectName: task.projectName,
-        deadline: "${task.deadlineDate} ${task.deadlineTime}",
-        members: task.members,
-      );
+      print('Đang gửi thông báo đến các thành viên...');
+      try {
+        final notificationService = locator<NotificationServices>();
+        await notificationService.sendTaskAssignmentNotification(
+          taskName: task.title,
+          projectName: task.projectName,
+          deadline: "${task.deadlineDate} ${task.deadlineTime}",
+          members: task.members,
+        );
+        print('Đã gửi thông báo đến tất cả thành viên thành công');
+      } catch (e) {
+        print('Lỗi khi gửi thông báo: $e');
+        // Không throw exception ở đây để vẫn tạo được task ngay cả khi gửi thông báo thất bại
+      }
       
       return true;
     } catch (e) {
