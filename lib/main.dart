@@ -220,8 +220,7 @@ class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     final themeProvider = Provider.of<ThemePreference>(context);
-    NotificationServices.setGlobalContext(context);
-
+    
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       themeMode: themeProvider.themeMode,

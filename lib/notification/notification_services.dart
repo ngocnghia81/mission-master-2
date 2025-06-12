@@ -26,13 +26,6 @@ class NotificationServices {
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static BuildContext? _globalContext;
-  
-  // Setter để lưu context
-  static void setGlobalContext(BuildContext context) {
-    _globalContext = context;
-  }
-
   // Khởi tạo kênh thông báo
   AndroidNotificationChannel channel = AndroidNotificationChannel(
     'high_importance_channel', // id
@@ -322,7 +315,7 @@ class NotificationServices {
     });
   }
 
-  // Sửa lại phương thức gửi thông báo task
+  // Gửi thông báo trực tiếp đến người dùng
   Future<void> sendTaskAssignmentNotification({
     required String taskName,
     required String projectName,
@@ -331,13 +324,13 @@ class NotificationServices {
     BuildContext? context, // Thêm tham số context
   }) async {
     try {
-      // Sử dụng context được truyền vào hoặc global context
-      final BuildContext? notificationContext = context ?? _globalContext;
-      
+      // Kiểm tra email người dùng hiện tại
       final currentUserEmail = Auth.auth.currentUser?.email;
-      print('🔔 Đang gửi thông báo cho nhiệm vụ: $taskName');
-      print('📧 Email người tạo: $currentUserEmail');
-      print('👥 Danh sách thành viên: $members');
+      print('Đang gửi thông báo cho nhiệm vụ: $taskName');
+      print('Dự án: $projectName');
+      print('Deadline: $deadline');
+      print('Danh sách thành viên: $members');
+      print('Email người dùng hiện tại: $currentUserEmail');
       
       // Tạo nội dung thông báo
       final title = 'Công việc mới trong $projectName';
@@ -347,10 +340,18 @@ class NotificationServices {
       DateTime today = DateTime.now();
       String currentDate = "${today.day}/${today.month}/${today.year}";
       
+      // Danh sách email đã chuẩn hóa để gửi thông báo FCM
+      List<String> normalizedEmails = [];
+      
       for (String member in members) {
+        print('Đang tạo thông báo cho thành viên: $member');
+        
+        // Đảm bảo email được chuẩn hóa (viết thường, loại bỏ khoảng trắng)
         String normalizedEmail = member.trim().toLowerCase();
+        normalizedEmails.add(normalizedEmail);
         
         try {
+          // Tạo ID duy nhất cho thông báo
           String notificationId = 'task_notification_${DateTime.now().millisecondsSinceEpoch}_${normalizedEmail.hashCode}';
           
           // Lưu thông báo vào Firestore
@@ -366,35 +367,59 @@ class NotificationServices {
             'deadline': deadline,
           });
           
-          print('✅ Đã lưu thông báo cho: $normalizedEmail');
-          
-          // Hiển thị thông báo local cho người dùng hiện tại
-          if (currentUserEmail != null && 
-              normalizedEmail == currentUserEmail.trim().toLowerCase()) {
-            print('🔔 Hiển thị thông báo local cho người dùng hiện tại');
-            
-            await showLocalNotification(
-              title: title,
-              body: body,
-              context: notificationContext,
-            );
-          }
-          
+          print('Đã lưu thông báo cho: $normalizedEmail với ID: $notificationId');
         } catch (e) {
-          print('❌ Lỗi khi tạo thông báo cho $normalizedEmail: $e');
+          print('Lỗi khi tạo thông báo cho $normalizedEmail: $e');
         }
       }
       
-      // Gửi FCM notification
-      await sendPushNotificationToUsers(
-        title: title,
-        body: body,
-        userEmails: members.map((e) => e.trim().toLowerCase()).toList(),
-      );
+      // Hiển thị thông báo cục bộ cho người dùng hiện tại nếu họ là một trong những người được giao việc
+      if (currentUserEmail != null && members.any((m) => m.trim().toLowerCase() == currentUserEmail.trim().toLowerCase())) {
+        print('Hiển thị thông báo cục bộ cho người dùng hiện tại: $currentUserEmail');
+        await showLocalNotification(
+          title: title,
+          body: body,
+        );
+      }
       
-      print('✅ Đã hoàn tất gửi thông báo nhiệm vụ');
+      // Gửi thông báo FCM đến tất cả người dùng
+      if (normalizedEmails.isNotEmpty) {
+        print('Gửi thông báo FCM đến tất cả thành viên...');
+        await sendPushNotificationToUsers(
+          title: title,
+          body: body,
+          userEmails: normalizedEmails,
+        );
+        
+        // Tạo thông báo FCM trực tiếp
+        for (String email in normalizedEmails) {
+          try {
+            // Tạo thông báo FCM trong Firestore để Cloud Functions xử lý
+            await FirebaseFirestore.instance.collection('FCMMessages').doc().set({
+              'to': email,
+              'notification': {
+                'title': title,
+                'body': body,
+              },
+              'data': {
+                'taskName': taskName,
+                'projectName': projectName,
+                'deadline': deadline,
+                'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+              },
+              'timestamp': FieldValue.serverTimestamp(),
+              'processed': false,
+            });
+            print('Đã tạo FCM message cho: $email');
+          } catch (e) {
+            print('Lỗi khi tạo FCM message cho $email: $e');
+          }
+        }
+      }
+      
+      print('Đã gửi tất cả thông báo nhiệm vụ thành công');
     } catch (e) {
-      print('❌ Lỗi khi gửi thông báo nhiệm vụ: $e');
+      print('Lỗi khi gửi thông báo nhiệm vụ: $e');
     }
   }
 
@@ -419,15 +444,16 @@ class NotificationServices {
     }
   }
   
+  // Hiển thị thông báo cục bộ
   Future<void> showLocalNotification({
     required String title,
     required String body,
-    BuildContext? context,
   }) async {
     try {
-      print('📱 Đang hiển thị thông báo local: $title');
+      print('Đang hiển thị thông báo cục bộ: $title');
+      print('Nội dung: $body');
       
-      // Tạo chi tiết thông báo Android với cấu hình mạnh mẽ hơn
+      // Tạo chi tiết thông báo Android
       AndroidNotificationDetails androidNotificationDetails =
           AndroidNotificationDetails(
         channel.id,
@@ -437,34 +463,23 @@ class NotificationServices {
         priority: Priority.high,
         ticker: 'ticker',
         icon: '@mipmap/ic_launcher',
-        playSound: true,
-        enableVibration: true,
-        enableLights: true,
-        fullScreenIntent: true,
-        visibility: NotificationVisibility.public,
         autoCancel: true, // Thêm thuộc tính này
         ongoing: false,   // Đảm bảo thông báo không bị sticky
         showWhen: true,   // Hiển thị thời gian
       );
       
+      // Chi tiết thông báo iOS
       const DarwinNotificationDetails darwinNotificationDetails =
           DarwinNotificationDetails(
-        presentAlert: true, 
-        presentBadge: true, 
-        presentSound: true,
-        interruptionLevel: InterruptionLevel.active,
-      );
-
+              presentAlert: true, presentBadge: true, presentSound: true);
+      
+      // Kết hợp cả hai nền tảng
       NotificationDetails notificationDetails = NotificationDetails(
-        android: androidNotificationDetails, 
-        iOS: darwinNotificationDetails
-      );
+          android: androidNotificationDetails, iOS: darwinNotificationDetails);
       
-      // Tạo ID duy nhất cho mỗi thông báo
+      // Hiển thị thông báo với ID ngẫu nhiên
       int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
-      
-      // Hiển thị thông báo
-      await flutterLocalNotificationsPlugin.show(
+     await flutterLocalNotificationsPlugin.show(
         notificationId,
         title,
         body,
@@ -476,14 +491,13 @@ class NotificationServices {
         }),
       );
       
-      print('✅ Đã hiển thị thông báo local với ID: $notificationId');
+      print('Đã hiển thị thông báo cục bộ với ID: $notificationId');
       
-      // Đảm bảo lưu vào Firestore
+      // Lưu thông báo vào Firestore
       await project().saveNotifications(title: title, body: body);
-      print('✅ Đã lưu thông báo vào Firestore');
-      
+      print('Đã lưu thông báo vào Firestore');
     } catch (e) {
-      print('❌ Lỗi khi hiển thị thông báo local: $e');
+      print('Lỗi khi hiển thị thông báo cục bộ: $e');
     }
   }
 
