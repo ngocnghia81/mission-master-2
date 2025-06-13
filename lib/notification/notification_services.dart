@@ -15,6 +15,7 @@ import 'package:mission_master/injection/database.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mission_master/bloc/bottomNavBarBloc/bloc.dart';
 import 'package:mission_master/bloc/bottomNavBarBloc/events.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'package:mission_master/routes/routes.dart';
 import 'package:http/http.dart' as http;
@@ -68,9 +69,13 @@ class NotificationServices {
     try {
       print('Bắt đầu khởi tạo hệ thống thông báo...');
       
-      // Yêu cầu quyền
+      // Kiểm tra và yêu cầu quyền thông báo cho Android 13+
+      await checkAndRequestNotificationPermission();
+      print('Đã kiểm tra quyền thông báo cho Android 13+');
+      
+      // Yêu cầu quyền thông báo Firebase
       await requestPermission();
-      print('Đã yêu cầu quyền thông báo');
+      print('Đã yêu cầu quyền thông báo Firebase');
       
       // Thiết lập thông báo cục bộ
       await _setupLocalNotifications(context);
@@ -99,6 +104,35 @@ class NotificationServices {
       print('Khởi tạo hệ thống thông báo hoàn tất');
     } catch (e) {
       print('Lỗi khi khởi tạo hệ thống thông báo: $e');
+    }
+  }
+
+  // Kiểm tra và yêu cầu quyền thông báo cho Android 13+
+  Future<void> checkAndRequestNotificationPermission() async {
+    try {
+      // Chỉ áp dụng cho Android
+      if (!io.Platform.isAndroid) return;
+      
+      print('Kiểm tra quyền thông báo cho Android...');
+      
+      // Kiểm tra trạng thái quyền thông báo
+      PermissionStatus status = await Permission.notification.status;
+      print('Trạng thái quyền thông báo hiện tại: $status');
+      
+      // Nếu chưa được cấp quyền, yêu cầu quyền
+      if (status.isDenied || status.isRestricted || status.isLimited) {
+        print('Yêu cầu quyền thông báo...');
+        status = await Permission.notification.request();
+        print('Kết quả yêu cầu quyền thông báo: $status');
+      }
+      
+      // Nếu người dùng từ chối vĩnh viễn, mở cài đặt ứng dụng
+      if (status.isPermanentlyDenied) {
+        print('Quyền thông báo bị từ chối vĩnh viễn. Mở cài đặt ứng dụng...');
+        await AppSettings.openAppSettings();
+      }
+    } catch (e) {
+      print('Lỗi khi kiểm tra và yêu cầu quyền thông báo: $e');
     }
   }
 
@@ -187,12 +221,14 @@ class NotificationServices {
         priority: Priority.high,
         ticker: 'ticker',
         icon: '@mipmap/ic_launcher',
-        // Thêm các tùy chọn để đảm bảo thông báo hiển thị
+        // Thêm các tùy chọn để đảm bảo thông báo hiển thị dạng heads-up
         playSound: true,
         enableVibration: true,
         enableLights: true,
-        fullScreenIntent: true, // Hiển thị kể cả khi màn hình khóa
-        visibility: NotificationVisibility.public, // Hiển thị trên màn hình khóa
+        fullScreenIntent: true,
+        visibility: NotificationVisibility.public,
+        category: AndroidNotificationCategory.message, // Sử dụng category message
+        channelShowBadge: true,
       );
       
       // Cấu hình cho iOS
@@ -201,7 +237,7 @@ class NotificationServices {
               presentAlert: true, 
               presentBadge: true, 
               presentSound: true,
-              interruptionLevel: InterruptionLevel.active // Ưu tiên cao cho thông báo
+              interruptionLevel: InterruptionLevel.timeSensitive // Tăng mức độ ưu tiên
           );
 
       // Tạo chi tiết thông báo
@@ -463,15 +499,24 @@ class NotificationServices {
         priority: Priority.high,
         ticker: 'ticker',
         icon: '@mipmap/ic_launcher',
-        autoCancel: true, // Thêm thuộc tính này
-        ongoing: false,   // Đảm bảo thông báo không bị sticky
-        showWhen: true,   // Hiển thị thời gian
+        // Thêm các tùy chọn để đảm bảo thông báo hiển thị dạng heads-up
+        playSound: true,
+        enableVibration: true,
+        enableLights: true,
+        autoCancel: true,
+        fullScreenIntent: true,
+        visibility: NotificationVisibility.public,
+        category: AndroidNotificationCategory.message, // Sử dụng category message
+        channelShowBadge: true,
       );
       
       // Chi tiết thông báo iOS
       const DarwinNotificationDetails darwinNotificationDetails =
           DarwinNotificationDetails(
-              presentAlert: true, presentBadge: true, presentSound: true);
+              presentAlert: true, 
+              presentBadge: true, 
+              presentSound: true,
+              interruptionLevel: InterruptionLevel.timeSensitive); // Tăng mức độ ưu tiên
       
       // Kết hợp cả hai nền tảng
       NotificationDetails notificationDetails = NotificationDetails(
