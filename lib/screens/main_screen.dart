@@ -145,6 +145,30 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: AppColors.primaryColor,
         foregroundColor: AppColors.white,
         actions: [
+          // Thêm nút kiểm tra thông báo
+          IconButton(
+            icon: Icon(Icons.bug_report),
+            tooltip: 'Kiểm tra thông báo',
+            onPressed: () async {
+              try {
+                await _notificationServices.testNotification();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Đã gửi thông báo kiểm tra'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Lỗi khi gửi thông báo kiểm tra: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+          ),
           BlocBuilder<NavBarBloc, NavBarStates>(
             builder: (context, state) {
               // Hiển thị actions khác nhau tùy vào tab hiện tại

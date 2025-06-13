@@ -410,6 +410,10 @@ class Database {
     required String body,
   }) async {
     try {
+      // Lấy thông tin người dùng hiện tại
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      final currentUserName = Auth.auth.currentUser?.displayName ?? 'Ai đó';
+      
       // Lấy danh sách email của các thành viên từ các field khác nhau
       List<String> members = [];
       if (taskData['Members'] != null) {
@@ -421,23 +425,37 @@ class Database {
       }
       
       // Lọc ra các thành viên khác (không phải người dùng hiện tại)
-      final currentUserEmail = Auth.auth.currentUser?.email;
       final otherMembers = members.where((email) => email != currentUserEmail).toList();
+      
+      // Lấy thông tin task
+      final taskName = taskData['taskName'] ?? taskData['title'] ?? 'Công việc';
+      final projectName = taskData['projectName'] ?? 'Dự án';
+      final deadline = taskData['deadlineDate'] ?? '';
       
       // Lưu thông báo cho từng thành viên
       DateTime today = DateTime.now();
       String currentDate = "${today.day}/${today.month}/${today.year}";
       
       for (String member in otherMembers) {
+        // Tạo ID duy nhất cho thông báo
+        String notificationId = 'status_notification_${DateTime.now().millisecondsSinceEpoch}_${member.hashCode}';
+        
         // Lưu thông báo vào Firestore
-        await firestore.collection('Notifications').doc().set({
+        await firestore.collection('Notifications').doc(notificationId).set({
           'title': title,
           'body': body,
           'receiveDate': currentDate,
           'receiveTo': member,
           'isRead': false,
           'timestamp': FieldValue.serverTimestamp(),
+          'taskName': taskName,
+          'projectName': projectName,
+          'deadline': deadline,
+          'updatedBy': currentUserName,
+          'updatedByEmail': currentUserEmail,
         });
+        
+        print('Đã gửi thông báo cập nhật trạng thái cho: $member');
       }
     } catch (e) {
       print('Lỗi khi gửi thông báo: $e');
@@ -574,18 +592,31 @@ class Database {
       print('Nội dung: $body');
       
       DateTime today = DateTime.now();
-      String notificationId = 'notif_${DateTime.now().millisecondsSinceEpoch}';
+      String notificationId = 'notif_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
       
-      await firestore.collection('Notifications').doc(notificationId).set({
+      // Tạo dữ liệu thông báo với đầy đủ thông tin
+      Map<String, dynamic> notificationData = {
         'title': title,
         'body': body,
         'receiveDate': "${today.day}/${today.month}/${today.year}",
         'receiveTo': currentUserEmail, 
         'isRead': false,
         'timestamp': FieldValue.serverTimestamp(),
-      });
+      };
       
-      print('Đã lưu thông báo thành công với ID: $notificationId');
+      // Lưu thông báo vào Firestore với ID duy nhất
+      await firestore.collection('Notifications').doc(notificationId).set(notificationData);
+      
+      // Kiểm tra xem thông báo đã được lưu thành công chưa
+      DocumentSnapshot checkDoc = await firestore.collection('Notifications').doc(notificationId).get();
+      if (checkDoc.exists) {
+        print('Đã lưu thông báo thành công với ID: $notificationId');
+      } else {
+        print('Thông báo chưa được lưu thành công, thử lại...');
+        // Thử lại một lần nữa với ID khác
+        notificationId = 'notif_retry_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
+        await firestore.collection('Notifications').doc(notificationId).set(notificationData);
+      }
     } catch (e) {
       print('Lỗi khi lưu thông báo: $e');
     }

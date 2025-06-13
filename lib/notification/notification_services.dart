@@ -101,6 +101,10 @@ class NotificationServices {
       await subscribeToTopics();
       print('Đã đăng ký nhận thông báo chung');
       
+      // Kiểm tra thông báo để đảm bảo mọi thứ hoạt động
+      await testNotification();
+      print('Đã kiểm tra hệ thống thông báo');
+      
       print('Khởi tạo hệ thống thông báo hoàn tất');
     } catch (e) {
       print('Lỗi khi khởi tạo hệ thống thông báo: $e');
@@ -362,15 +366,17 @@ class NotificationServices {
     try {
       // Kiểm tra email người dùng hiện tại
       final currentUserEmail = Auth.auth.currentUser?.email;
+      final currentUserName = Auth.auth.currentUser?.displayName ?? 'Ai đó';
       print('Đang gửi thông báo cho nhiệm vụ: $taskName');
       print('Dự án: $projectName');
       print('Deadline: $deadline');
       print('Danh sách thành viên: $members');
       print('Email người dùng hiện tại: $currentUserEmail');
+      print('Tên người giao nhiệm vụ: $currentUserName');
       
       // Tạo nội dung thông báo
       final title = 'Công việc mới trong $projectName';
-      final body = 'Bạn đã được giao công việc: $taskName. Hạn chót: $deadline';
+      final body = '$currentUserName đã giao cho bạn công việc: $taskName. Hạn chót: $deadline';
       
       // Lưu thông báo vào Firestore cho mỗi thành viên
       DateTime today = DateTime.now();
@@ -401,9 +407,34 @@ class NotificationServices {
             'taskName': taskName,
             'projectName': projectName,
             'deadline': deadline,
+            'assignedBy': currentUserName,
+            'assignedByEmail': currentUserEmail,
           });
           
           print('Đã lưu thông báo cho: $normalizedEmail với ID: $notificationId');
+          
+          // Kiểm tra xem thông báo đã được lưu thành công chưa
+          DocumentSnapshot checkDoc = await Database.firestore.collection('Notifications').doc(notificationId).get();
+          if (checkDoc.exists) {
+            print('Đã xác nhận thông báo được lưu thành công');
+          } else {
+            print('Thông báo chưa được lưu thành công, thử lại...');
+            // Thử lại một lần nữa với ID khác
+            notificationId = 'task_notification_retry_${DateTime.now().millisecondsSinceEpoch}_${normalizedEmail.hashCode}';
+            await Database.firestore.collection('Notifications').doc(notificationId).set({
+              'title': title,
+              'body': body,
+              'receiveDate': currentDate,
+              'receiveTo': normalizedEmail,
+              'isRead': false,
+              'timestamp': FieldValue.serverTimestamp(),
+              'taskName': taskName,
+              'projectName': projectName,
+              'deadline': deadline,
+              'assignedBy': currentUserName,
+              'assignedByEmail': currentUserEmail,
+            });
+          }
         } catch (e) {
           print('Lỗi khi tạo thông báo cho $normalizedEmail: $e');
         }
@@ -418,6 +449,12 @@ class NotificationServices {
         );
       }
       
+      // Hiển thị thông báo cục bộ bổ sung để đảm bảo người dùng nhận được thông báo
+      await showLocalNotification(
+        title: 'Đã giao công việc mới',
+        body: 'Bạn đã giao công việc "$taskName" cho ${members.length} thành viên trong dự án "$projectName"',
+      );
+      
       // Gửi thông báo FCM đến tất cả người dùng
       if (normalizedEmails.isNotEmpty) {
         print('Gửi thông báo FCM đến tất cả thành viên...');
@@ -426,31 +463,6 @@ class NotificationServices {
           body: body,
           userEmails: normalizedEmails,
         );
-        
-        // Tạo thông báo FCM trực tiếp
-        for (String email in normalizedEmails) {
-          try {
-            // Tạo thông báo FCM trong Firestore để Cloud Functions xử lý
-            await FirebaseFirestore.instance.collection('FCMMessages').doc().set({
-              'to': email,
-              'notification': {
-                'title': title,
-                'body': body,
-              },
-              'data': {
-                'taskName': taskName,
-                'projectName': projectName,
-                'deadline': deadline,
-                'click_action': 'FLUTTER_NOTIFICATION_CLICK',
-              },
-              'timestamp': FieldValue.serverTimestamp(),
-              'processed': false,
-            });
-            print('Đã tạo FCM message cho: $email');
-          } catch (e) {
-            print('Lỗi khi tạo FCM message cho $email: $e');
-          }
-        }
       }
       
       print('Đã gửi tất cả thông báo nhiệm vụ thành công');
@@ -489,7 +501,30 @@ class NotificationServices {
       print('Đang hiển thị thông báo cục bộ: $title');
       print('Nội dung: $body');
       
-      // Tạo chi tiết thông báo Android
+      // Lưu thông báo vào Firestore trước
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      if (currentUserEmail != null) {
+        String notificationId = 'local_notif_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(10000)}';
+        DateTime today = DateTime.now();
+        
+        // Tạo dữ liệu thông báo
+        Map<String, dynamic> notificationData = {
+          'title': title,
+          'body': body,
+          'receiveDate': "${today.day}/${today.month}/${today.year}",
+          'receiveTo': currentUserEmail, 
+          'isRead': false,
+          'timestamp': FieldValue.serverTimestamp(),
+        };
+        
+        // Lưu vào Firestore
+        await Database.firestore.collection('Notifications').doc(notificationId).set(notificationData);
+        print('Đã lưu thông báo vào Firestore với ID: $notificationId');
+      } else {
+        print('Không thể lưu thông báo vào Firestore: Người dùng chưa đăng nhập');
+      }
+      
+      // Tạo chi tiết thông báo Android với độ ưu tiên cao nhất
       AndroidNotificationDetails androidNotificationDetails =
           AndroidNotificationDetails(
         channel.id,
@@ -504,19 +539,19 @@ class NotificationServices {
         enableVibration: true,
         enableLights: true,
         autoCancel: true,
-        fullScreenIntent: true,
+        fullScreenIntent: true, // Hiển thị ngay cả khi màn hình đang khóa
         visibility: NotificationVisibility.public,
-        category: AndroidNotificationCategory.message, // Sử dụng category message
+        category: AndroidNotificationCategory.message,
         channelShowBadge: true,
       );
       
-      // Chi tiết thông báo iOS
+      // Chi tiết thông báo iOS với độ ưu tiên cao nhất
       const DarwinNotificationDetails darwinNotificationDetails =
           DarwinNotificationDetails(
               presentAlert: true, 
               presentBadge: true, 
               presentSound: true,
-              interruptionLevel: InterruptionLevel.timeSensitive); // Tăng mức độ ưu tiên
+              interruptionLevel: InterruptionLevel.critical); // Mức độ ưu tiên cao nhất
       
       // Kết hợp cả hai nền tảng
       NotificationDetails notificationDetails = NotificationDetails(
@@ -524,7 +559,9 @@ class NotificationServices {
       
       // Hiển thị thông báo với ID ngẫu nhiên
       int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
-     await flutterLocalNotificationsPlugin.show(
+      
+      // Đảm bảo thông báo được hiển thị
+      await flutterLocalNotificationsPlugin.show(
         notificationId,
         title,
         body,
@@ -537,10 +574,6 @@ class NotificationServices {
       );
       
       print('Đã hiển thị thông báo cục bộ với ID: $notificationId');
-      
-      // Lưu thông báo vào Firestore
-      await project().saveNotifications(title: title, body: body);
-      print('Đã lưu thông báo vào Firestore');
     } catch (e) {
       print('Lỗi khi hiển thị thông báo cục bộ: $e');
     }
@@ -659,30 +692,139 @@ class NotificationServices {
     try {
       print('Đang kiểm tra hệ thống thông báo...');
       
-      // Kiểm tra thông báo cục bộ
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      final currentUserName = Auth.auth.currentUser?.displayName ?? 'Người dùng';
+      
+      if (currentUserEmail == null) {
+        print('Không thể tạo thông báo test: Người dùng chưa đăng nhập');
+        return;
+      }
+      
+      print('Email người dùng hiện tại: $currentUserEmail');
+      
+      // Thêm thông báo vào danh sách thông báo
+      DateTime now = DateTime.now();
+      String currentDate = "${now.day}/${now.month}/${now.year}";
+      
+      // Tạo thông báo test đơn giản
+      String notificationId = 'notification_${now.millisecondsSinceEpoch}';
+      
+      print('Đang tạo thông báo test với ID: $notificationId');
+      
+      Map<String, dynamic> notificationData = {
+        'title': 'Thông báo kiểm tra',
+        'body': 'Đây là thông báo kiểm tra hệ thống. Nếu bạn nhìn thấy nó, hệ thống thông báo đang hoạt động.',
+        'receiveDate': currentDate,
+        'receiveTo': currentUserEmail, 
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      };
+      
+      try {
+        await FirebaseFirestore.instance.collection('Notifications').doc(notificationId).set(notificationData);
+        print('Đã tạo thông báo test thành công');
+      } catch (e) {
+        print('Lỗi khi tạo thông báo test: $e');
+      }
+      
+      // Kiểm tra xem thông báo đã được tạo thành công chưa
+      try {
+        DocumentSnapshot checkDoc = await FirebaseFirestore.instance.collection('Notifications').doc(notificationId).get();
+        print('Thông báo tồn tại: ${checkDoc.exists}');
+      } catch (e) {
+        print('Lỗi khi kiểm tra thông báo: $e');
+      }
+      
+      // Hiển thị thông báo cục bộ
       await showLocalNotification(
-        title: 'Kiểm tra thông báo',
-        body: 'Đây là thông báo kiểm tra. Nếu bạn nhìn thấy nó, hệ thống thông báo đang hoạt động bình thường.',
+        title: 'Thông báo kiểm tra',
+        body: 'Đã tạo thông báo kiểm tra. Vui lòng kiểm tra danh sách thông báo.',
       );
       
-      // Tạo thông báo giả lập từ Firebase
-      RemoteMessage mockMessage = RemoteMessage(
-        notification: RemoteNotification(
-          title: 'Kiểm tra thông báo Firebase',
-          body: 'Đây là thông báo kiểm tra từ Firebase. Nếu bạn nhìn thấy nó, hệ thống thông báo đang hoạt động bình thường.',
-        ),
-        data: {
-          'type': 'test',
-          'timestamp': DateTime.now().toString(),
-        },
-      );
-      
-      // Hiển thị thông báo giả lập
-      await showNotifications(mockMessage);
-      
-      print('Đã gửi thông báo kiểm tra thành công');
+      print('Đã tạo thông báo test trong Firestore thành công với ID: $notificationId');
     } catch (e) {
       print('Lỗi khi kiểm tra thông báo: $e');
+    }
+  }
+  
+  // Tạo thông báo test trong Firestore để kiểm tra hiển thị danh sách
+  Future<void> createTestNotificationsInFirestore() async {
+    try {
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      if (currentUserEmail == null) {
+        print('Không thể tạo thông báo test: Người dùng chưa đăng nhập');
+        return;
+      }
+      
+      print('Đang tạo thông báo test trong Firestore...');
+      
+      DateTime now = DateTime.now();
+      String currentDate = "${now.day}/${now.month}/${now.year}";
+      
+      // Tạo thông báo test 1
+      String notificationId1 = 'test_notification_${now.millisecondsSinceEpoch}_1';
+      await Database.firestore.collection('Notifications').doc(notificationId1).set({
+        'title': 'Thông báo kiểm tra 1',
+        'body': 'Đây là thông báo kiểm tra trong danh sách. Vui lòng kiểm tra xem nó có hiển thị trong tab thông báo không.',
+        'receiveDate': currentDate,
+        'receiveTo': currentUserEmail, 
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      
+      // Tạo thông báo test 2 (1 giây sau)
+      await Future.delayed(Duration(seconds: 1));
+      String notificationId2 = 'test_notification_${now.millisecondsSinceEpoch}_2';
+      await Database.firestore.collection('Notifications').doc(notificationId2).set({
+        'title': 'Thông báo kiểm tra 2',
+        'body': 'Đây là thông báo kiểm tra thứ hai. Nó sẽ hiển thị trước thông báo đầu tiên nếu sắp xếp theo thời gian.',
+        'receiveDate': currentDate,
+        'receiveTo': currentUserEmail,
+        'isRead': false,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+      
+      print('Đã tạo thông báo test trong Firestore thành công với ID: $notificationId1 và $notificationId2');
+    } catch (e) {
+      print('Lỗi khi tạo thông báo test: $e');
+    }
+  }
+
+  // Kiểm tra kết nối FCM
+  Future<bool> checkFCMConnection() async {
+    try {
+      print('Kiểm tra kết nối FCM...');
+      
+      // Kiểm tra token FCM
+      final token = await getDeviceToken();
+      if (token.isEmpty) {
+        print('Không thể lấy token FCM');
+        return false;
+      }
+      print('Đã lấy token FCM thành công: ${token.substring(0, 10)}...');
+      
+      // Kiểm tra quyền thông báo
+      final settings = await messaging.getNotificationSettings();
+      if (settings.authorizationStatus != AuthorizationStatus.authorized) {
+        print('Chưa được cấp quyền thông báo: ${settings.authorizationStatus}');
+        return false;
+      }
+      print('Đã được cấp quyền thông báo: ${settings.authorizationStatus}');
+      
+      // Kiểm tra đăng ký chủ đề
+      final currentUserEmail = Auth.auth.currentUser?.email;
+      if (currentUserEmail != null) {
+        String sanitizedEmail = currentUserEmail.replaceAll(RegExp(r'[@.]'), '_');
+        print('Đã đăng ký nhận thông báo cho chủ đề: $sanitizedEmail');
+      }
+      
+      // Gửi thông báo kiểm tra
+      await testNotification();
+      
+      return true;
+    } catch (e) {
+      print('Lỗi khi kiểm tra kết nối FCM: $e');
+      return false;
     }
   }
 }
