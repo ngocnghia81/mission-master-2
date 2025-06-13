@@ -385,6 +385,27 @@ class NotificationServices {
       // Danh sách email đã chuẩn hóa để gửi thông báo FCM
       List<String> normalizedEmails = [];
       
+      // Hiển thị thông báo cục bộ cho người dùng hiện tại
+      bool currentUserIsAssigned = false;
+      String? currentUserNormalizedEmail;
+      
+      if (currentUserEmail != null) {
+        currentUserNormalizedEmail = currentUserEmail.trim().toLowerCase();
+      }
+      
+      // Kiểm tra xem người dùng hiện tại có trong danh sách thành viên không
+      if (currentUserNormalizedEmail != null) {
+        for (String member in members) {
+          if (member.trim().toLowerCase() == currentUserNormalizedEmail) {
+            currentUserIsAssigned = true;
+            break;
+          }
+        }
+      }
+      
+      print('Người dùng hiện tại có trong danh sách được giao: $currentUserIsAssigned');
+      
+      // Xử lý từng thành viên
       for (String member in members) {
         print('Đang tạo thông báo cho thành viên: $member');
         
@@ -435,25 +456,34 @@ class NotificationServices {
               'assignedByEmail': currentUserEmail,
             });
           }
+          
+          // Nếu thành viên này là người dùng hiện tại, đánh dấu để hiển thị thông báo cục bộ
+          if (currentUserNormalizedEmail != null && normalizedEmail == currentUserNormalizedEmail) {
+            currentUserIsAssigned = true;
+            print('Người dùng hiện tại được giao việc: $normalizedEmail');
+          }
         } catch (e) {
           print('Lỗi khi tạo thông báo cho $normalizedEmail: $e');
         }
       }
       
       // Hiển thị thông báo cục bộ cho người dùng hiện tại nếu họ là một trong những người được giao việc
-      if (currentUserEmail != null && members.any((m) => m.trim().toLowerCase() == currentUserEmail.trim().toLowerCase())) {
-        print('Hiển thị thông báo cục bộ cho người dùng hiện tại: $currentUserEmail');
+      if (currentUserIsAssigned) {
+        print('Hiển thị thông báo cục bộ cho người dùng hiện tại (người được giao): $currentUserEmail');
         await showLocalNotification(
           title: title,
           body: body,
         );
       }
       
-      // Hiển thị thông báo cục bộ bổ sung để đảm bảo người dùng nhận được thông báo
-      await showLocalNotification(
-        title: 'Đã giao công việc mới',
-        body: 'Bạn đã giao công việc "$taskName" cho ${members.length} thành viên trong dự án "$projectName"',
-      );
+      // Hiển thị thông báo cục bộ cho người giao việc
+      if (currentUserEmail != null) {
+        print('Hiển thị thông báo xác nhận cho người giao việc: $currentUserEmail');
+        await showLocalNotification(
+          title: 'Đã giao công việc mới',
+          body: 'Bạn đã giao công việc "$taskName" cho ${members.length} thành viên trong dự án "$projectName"',
+        );
+      }
       
       // Gửi thông báo FCM đến tất cả người dùng
       if (normalizedEmails.isNotEmpty) {
@@ -531,7 +561,7 @@ class NotificationServices {
         channel.name,
         channelDescription: channel.description,
         importance: Importance.max,
-        priority: Priority.high,
+        priority: Priority.max,
         ticker: 'ticker',
         icon: '@mipmap/ic_launcher',
         // Thêm các tùy chọn để đảm bảo thông báo hiển thị dạng heads-up
@@ -574,6 +604,23 @@ class NotificationServices {
       );
       
       print('Đã hiển thị thông báo cục bộ với ID: $notificationId');
+      
+      // Thêm một thông báo nữa sau một khoảng thời gian ngắn để đảm bảo hiển thị
+      await Future.delayed(Duration(milliseconds: 500));
+      notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      await flutterLocalNotificationsPlugin.show(
+        notificationId,
+        title,
+        body,
+        notificationDetails,
+        payload: json.encode({
+          'title': title, 
+          'body': body,
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+      );
+      
+      print('Đã hiển thị thông báo cục bộ lần thứ hai với ID: $notificationId');
     } catch (e) {
       print('Lỗi khi hiển thị thông báo cục bộ: $e');
     }
